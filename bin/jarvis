@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+#  jarvis — единая точка входа J.A.R.V.I.S. (обёртка над hermes + HUD)
+#  Установщик подставляет __HERMES_HOME__ и __PYTHON__.
+# ═══════════════════════════════════════════════════════════════════════════
+set -euo pipefail
+HERMES_HOME="${HERMES_HOME:-__HERMES_HOME__}"
+PY="__PYTHON__"; [[ -x "$PY" ]] || PY="$(command -v python3)"
+JARVIS_HOME="$HERMES_HOME/jarvis"
+HUD_PORT="${JARVIS_HUD_PORT:-8765}"
+HUD_PID="$HERMES_HOME/jarvis/hud.pid"
+HUD_LOG="$HERMES_HOME/logs/jarvis-hud.log"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+UNAME_S="$(uname -s)"
+IS_MAC=0; IS_LINUX=0
+[[ "$UNAME_S" == "Darwin" ]] && IS_MAC=1
+[[ "$UNAME_S" == "Linux" ]] && IS_LINUX=1
+INSTALL_HINT="bash install.sh"; [[ $IS_LINUX -eq 1 ]] && INSTALL_HINT="bash install.linux.sh"
+
+CB='\033[1;36m'; CR='\033[1;31m'; C0='\033[0m'
+say(){ printf "${CB}◆${C0} %s\n" "$*"; }
+fail(){ printf "${CR}✖ %s${C0}\n" "$*" >&2; exit 1; }
+need(){ command -v "$1" >/dev/null 2>&1 || fail "нужна команда $1 — ${2:-установите её}"; }
+
+# open(1) есть только на macOS — на Linux открываем через xdg-open, если доступен (no-op иначе)
+xopen(){ if [[ $IS_MAC -eq 1 ]]; then open "$@" 2>/dev/null || true; elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$@" >/dev/null 2>&1 & fi }
+# остановить всё, что говорит вслух (say/afplay на macOS, espeak/spd-say на Linux)
+hush_speech(){
+  if [[ $IS_MAC -eq 1 ]]; then pkill -x say 2>/dev/null; pkill -x afplay 2>/dev/null
+  else pkill -x espeak 2>/dev/null; pkill -x espeak-ng 2>/dev/null; pkill -x spd-say 2>/dev/null; fi
+  true
+}
+
+# HUD считается запущенным, если жив pid из pid-файла ИЛИ порт отвечает (например, HUD поднят launchd/systemd)
+hud_pid_alive(){ [[ -f "$HUD_PID" ]] && kill -0 "$(cat "$HUD_PID" 2>/dev/null)" 2>/dev/null; }
+hud_port_alive(){ curl -s -m 1 -o /dev/null "http://127.0.0.1:$HUD_PORT/api/status" 2>/dev/null; }
+hud_running(){ hud_pid_alive || hud_port_alive; }
+hud_launchd(){ [[ $IS_MAC -eq 1 ]] && launchctl print "gui/$(id -u)/ai.jarvis.hud" >/dev/null 2>&1; }
+hud_systemd(){ [[ $IS_LINUX -eq 1 ]] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet jarvis-hud.service 2>/dev/null; }
+hud_start(){
+  if hud_pid_alive; then say "HUD уже запущен (pid $(cat "$HUD_PID"))"; return; fi
+  if hud_port_alive; then say "HUD уже отвечает на :$HUD_PORT (запущен через launchd/systemd)"; return; fi
+  if hud_systemd; then systemctl --user start jarvis-hud.service; sleep 0.7; hud_running && say "HUD → http://127.0.0.1:$HUD_PORT (systemd)"; return; fi
+  [[ -f "$JARVIS_HOME/hud/server.py" ]] || fail "HUD не установлен: $JARVIS_HOME/hud/server.py (переустановите: $INSTALL_HINT)"
+  mkdir -p "$(dirname "$HUD_LOG")"
+  nohup "$PY" "$JARVIS_HOME/hud/server.py" --port "$HUD_PORT" >>"$HUD_LOG" 2>&1 &
+  echo $! > "$HUD_PID"; sleep 0.7
+  hud_running && say "HUD → http://127.0.0.1:$HUD_PORT" || { printf "${CR}HUD не стартовал, см. %s${C0}\n" "$HUD_LOG"; exit 1; }
+}
+hud_stop(){
+  if hud_pid_alive; then kill "$(cat "$HUD_PID")" 2>/dev/null || true; rm -f "$HUD_PID"; say "HUD остановлен"
+  elif hud_launchd; then
+    # запущен launchd'ом — снимаем агент до следующего входа в систему, иначе KeepAlive поднимет его снова
+    launchctl bootout "gui/$(id -u)/ai.jarvis.hud" >/dev/null 2>&1 || true; say "HUD остановлен (launchd-агент выгружен до следующего входа)"
+  elif hud_systemd; then
+    systemctl --user stop jarvis-hud.service; say "HUD остановлен (systemd — до следующего запуска jarvis hud)"
+  elif hud_port_alive; then
+    pkill -f "jarvis/hud/server.py" 2>/dev/null || true; say "HUD остановлен"
+  else rm -f "$HUD_PID"; say "HUD не запущен"; fi
+}
+
+gateway_running(){ hermes gateway status 2>/dev/null | grep -qi -E "running|запущен|active"; }
+gateway_launchd(){ [[ $IS_MAC -eq 1 ]] && launchctl print "gui/$(id -u)/ai.jarvis.gateway" >/dev/null 2>&1; }
+gateway_systemd(){ [[ $IS_LINUX -eq 1 ]] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet jarvis-gateway.service 2>/dev/null; }
+gateway_start(){
+  if gateway_launchd; then launchctl kickstart "gui/$(id -u)/ai.jarvis.gateway" 2>/dev/null || true
+  elif gateway_systemd || { [[ $IS_LINUX -eq 1 ]] && command -v systemctl >/dev/null 2>&1 && systemctl --user list-unit-files jarvis-gateway.service >/dev/null 2>&1; }; then
+    systemctl --user start jarvis-gateway.service 2>/dev/null || { hermes gateway start "$@" >/dev/null 2>&1 || hermes gateway "$@"; }
+  else hermes gateway start "$@" >/dev/null 2>&1 || hermes gateway "$@"; fi
+}
+gateway_stop(){
+  # под launchd/systemd (Restart=always) обычный stop бесполезен — агент тут же поднимется снова
+  if gateway_launchd; then launchctl bootout "gui/$(id -u)/ai.jarvis.gateway" >/dev/null 2>&1 || true; say "gateway остановлен (launchd-агент выгружен до следующего входа)"
+  elif gateway_systemd; then systemctl --user stop jarvis-gateway.service; say "gateway остановлен (systemd — до следующего запуска jarvis gateway)"
+  else hermes gateway stop; fi
+}
+
+usage(){ cat <<EOF
+J.A.R.V.I.S. on Hermes Agent
+
+  jarvis                 голосовой чат в терминале (wake word + Ctrl+B), TUI
+  jarvis chat [args]     классический CLI Hermes с профилем JARVIS
+  jarvis ask "вопрос"    один вопрос — один ответ (без интерактива)
+  jarvis hud             запустить HUD и открыть в браузере
+  jarvis hud stop|log|status   остановить HUD / показать лог / проверить
+  jarvis hush            немедленно заглушить речь (say/afplay/озвучка HUD)
+  jarvis gateway         запустить gateway (Telegram/Discord/API) в фоне
+  jarvis gateway stop    остановить gateway
+  jarvis up              всё сразу: gateway + HUD + голосовой TUI
+  jarvis status          состояние компонентов
+  jarvis brain [stats|review|export|diary|profile|log|backup|restore|sql]   база знаний
+  jarvis brain import    первичный импорт: контакты, календарь, заметки → карточки в базе
+  jarvis shortcuts       быстрые команды Siri/Shortcuts: «Спросить JARVIS», «В хранилище JARVIS» (Finder), «Замолчать», брифинг
+  jarvis vault [status|add <папка>|remove|search <слова>|list|tree|reindex|open]   хранилище файлов и проектов (~/JARVIS)
+  jarvis brief           утренний брифинг прямо сейчас
+  jarvis selftest [--fix] проверить все инструменты управления системой и права на этой машине (без LLM)
+  jarvis heartbeat       одна проверка «нужно ли что-то сказать?» (для cron/Shortcuts)
+  jarvis doctor [--fix]  самодиагностика: модель, плагины, API, HUD, автозапуск, права, хранилище (--fix чинит; --hermes = hermes doctor)
+  jarvis update          обновить JARVIS с GitHub (бэкап → установка → перезапуск; откат: --rollback)
+  jarvis update --check  только проверить;  --status · --channel stable|main · --auto off|check|auto · --hermes
+  jarvis app [build|quit|status|debug]  приложение строки меню JARVIS.app (Linux: трей на pystray — open|quit|status)
+  jarvis version         версии JARVIS и Hermes
+  jarvis perms           macOS: открыть нужные панели разрешений; Linux: список системных утилит для проверки
+  jarvis config          открыть config.yaml Hermes в редакторе
+  jarvis logs            хвост логов агента и HUD
+EOF
+}
+
+cmd="${1:-}"; [[ $# -gt 0 ]] && shift || true
+case "$cmd" in -h|--help|help|version|--version|-v) ;; *) [[ -d "$HERMES_HOME" ]] || fail "каталог HERMES_HOME не найден: $HERMES_HOME (переустановите: $INSTALL_HINT)" ;; esac
+case "$cmd" in
+  ""|voice|tui)
+    say "JARVIS online. Скажите «Hey Jarvis» или нажмите Ctrl+B. /voice, /wake, /brief, /focus, /timer, /screen"
+    exec hermes --tui "$@" ;;
+  chat)      exec hermes chat "$@" ;;
+  hush|stop)
+    hush_speech
+    curl -s -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$HUD_PORT/api/hush" >/dev/null 2>&1 || true
+    say "тихо" ;;
+  ask)       [[ $# -gt 0 ]] || fail 'использование: jarvis ask "вопрос"'; exec hermes chat -q "$*" ;;
+  hud)
+    case "${1:-start}" in
+      start|open) hud_start; xopen "http://127.0.0.1:$HUD_PORT" ;;
+      status) hud_running && say "HUD работает → http://127.0.0.1:$HUD_PORT" || { say "HUD не запущен"; exit 1; } ;;
+      stop)  hud_stop ;;
+      log|logs) tail -n 60 -f "$HUD_LOG" ;;
+      restart) if hud_launchd; then launchctl kickstart -k "gui/$(id -u)/ai.jarvis.hud" && say "HUD перезапущен (launchd)"; else hud_stop; hud_start; fi ;;
+      *) usage ;;
+    esac ;;
+  gateway)
+    case "${1:-start}" in
+      start) shift || true; gateway_start "$@"; say "gateway запущен (API :8642)" ;;
+      stop)  gateway_stop ;;
+      restart) gateway_stop; gateway_start; say "gateway перезапущен" ;;
+      *)     hermes gateway "$@" ;;
+    esac ;;
+  up)
+    gateway_start; say "gateway запущен (API :8642)"
+    hud_start; xopen "http://127.0.0.1:$HUD_PORT"
+    exec hermes --tui ;;
+  status)
+    printf "${CB}J.A.R.V.I.S. status${C0}\n"
+    printf "  hermes      : %s\n" "$(hermes --version 2>/dev/null | head -1 || echo 'not found')"
+    printf "  model       : %s\n" "$(hermes config get model 2>/dev/null || echo '—')"
+    printf "  gateway     : %s\n" "$(gateway_running && echo running || echo stopped)"
+    printf "  api :8642   : %s\n" "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8642/health 2>/dev/null || echo down)"
+    printf "  hud  :%s  : %s\n" "$HUD_PORT" "$(hud_running && echo running || echo stopped)"
+    printf "  plugins     : %s\n" "$(hermes plugins list 2>/dev/null | grep -i -c jarvis || echo 0)/3 jarvis-*"
+    printf "  wake word   : %s\n" "$(hermes config get wake_word.enabled 2>/dev/null || echo '—')"
+    printf "  stt/tts     : %s / %s\n" "$(hermes config get stt.provider 2>/dev/null || echo '—')" "$(hermes config get tts.provider 2>/dev/null || echo '—')"
+    if [[ $IS_MAC -eq 1 ]]; then
+      printf "  launchd     : %s\n" "$(launchctl list 2>/dev/null | grep -c ai.jarvis || echo 0) agents"
+    elif [[ $IS_LINUX -eq 1 ]] && command -v systemctl >/dev/null 2>&1; then
+      printf "  systemd     : %s\n" "$(systemctl --user list-units 'jarvis-*' --no-legend 2>/dev/null | grep -c jarvis || echo 0) units"
+    fi
+    printf "  version     : %s\n" "$("$PY" "$JARVIS_HOME/update.py" status 2>/dev/null | head -1 || echo '—')" ;;
+  brief)     exec hermes chat -s jarvis/briefing -q "Сделай брифинг по навыку morning-briefing прямо сейчас." ;;
+  selftest)  exec "$PY" "$JARVIS_HOME/selftest.py" "$@" ;;
+  heartbeat) exec hermes chat -s jarvis/heartbeat -q "Heartbeat. Проверь HEARTBEAT.md и ответь NO_REPLY, если ничего не требует внимания." ;;
+  brain)
+    # jarvis brain [stats|export|review|log|backup|path]
+    sub="${1:-stats}"; shift || true
+    BRAIN_DB="$HERMES_HOME/plugin-data/jarvis-brain/brain.db"
+    case "$sub" in sql|log|diary|stats|"") need sqlite3 "$([[ $IS_LINUX -eq 1 ]] && echo 'sudo apt install sqlite3 (или dnf/pacman)' || echo 'brew install sqlite')" ;; esac
+    case "$sub" in
+      review) exec hermes chat -s brain-nightly-review -q "Проведи ревизию базы знаний по навыку brain-nightly-review прямо сейчас и дай отчёт." ;;
+      export) exec hermes chat -q "Вызови brain_review export и ответь только путём к файлу." ;;
+      path)   echo "$BRAIN_DB" ;;
+      backup) [[ -f "$BRAIN_DB" ]] || fail "базы ещё нет: $BRAIN_DB"
+              dst="$BRAIN_DB.manual-$(date +%Y%m%d-%H%M%S)"; cp "$BRAIN_DB" "$dst" && echo "ok: $dst" ;;
+      sql)    # только чтение: открываем через URI mode=ro — случайный DELETE/UPDATE невозможен.
+              # Для записи (осознанно): jarvis brain sql --rw "…"
+              [[ -f "$BRAIN_DB" ]] || fail "базы ещё нет: $BRAIN_DB"
+              if [[ "${1:-}" == "--rw" ]]; then shift; exec sqlite3 "$BRAIN_DB" "$@"; fi
+              exec sqlite3 -readonly "$BRAIN_DB" "$@" ;;
+      log)    [[ -f "$BRAIN_DB" ]] || fail "базы ещё нет: $BRAIN_DB"; sqlite3 -header -column "$BRAIN_DB" "SELECT ts, actor, op, table_name, row_id FROM changelog ORDER BY id DESC LIMIT ${1:-20}" ;;
+      diary)  [[ -f "$BRAIN_DB" ]] || fail "базы ещё нет: $BRAIN_DB"; sqlite3 -column "$BRAIN_DB" "SELECT day, summary FROM episodes ORDER BY day DESC LIMIT ${1:-7}" ;;
+      profile) [[ -f "$HERMES_HOME/jarvis/PROFILE.md" ]] && cat "$HERMES_HOME/jarvis/PROFILE.md" || echo "Профиль ещё не выгружен — jarvis brain export" ;;
+      restore)
+        # shellcheck disable=SC2012
+        latest="$(ls -1t "$HERMES_HOME/plugin-data/jarvis-brain/"brain.bak-*.db 2>/dev/null | head -1 || true)"
+        [[ -n "${1:-}" || -n "$latest" ]] || fail "бэкапов нет (они создаются ночной ревизией и командой jarvis brain backup)"
+        src="${1:-$latest}"; [[ -f "$src" ]] || fail "файл не найден: $src"
+        read -r -p "Откатить базу из $src ? [y/N] " a; [[ "$a" == [yY] ]] || exit 0
+        cp "$BRAIN_DB" "$BRAIN_DB.pre-restore-$(date +%Y%m%d-%H%M%S)"; cp "$src" "$BRAIN_DB"; rm -f "$BRAIN_DB-wal" "$BRAIN_DB-shm"; echo "ok" ;;
+      import)  exec hermes chat -s jarvis/brain-import -q "Выполни первичный импорт знаний по навыку brain-import. Спрашивай подтверждение перед записью." ;;
+      *)      [[ -f "$BRAIN_DB" ]] || { echo "База ещё не создана (появится после первого запуска jarvis)"; exit 0; }
+              sqlite3 "$BRAIN_DB" "SELECT 'notes: '||COUNT(*) FROM notes WHERE status='active'; SELECT 'entities: '||COUNT(*) FROM entities WHERE status='active'; SELECT 'episodes: '||COUNT(*) FROM episodes; SELECT 'pending turns: '||COUNT(*) FROM turns WHERE digested=0; SELECT 'last review: '||COALESCE(MAX(finished_at),'—') FROM reviews;"
+              echo "file: $BRAIN_DB ($(du -k "$BRAIN_DB" | cut -f1) KB)  ·  markdown: $HERMES_HOME/jarvis/BRAIN.md" ;;
+    esac ;;
+  shortcuts) exec "$PY" "$JARVIS_HOME/make_shortcuts.py" "$@" ;;
+  vault)
+    VAULT_PY="$HERMES_HOME/plugins/jarvis-brain/vault.py"
+    [[ -f "$VAULT_PY" ]] || fail "плагин jarvis-brain не установлен ($INSTALL_HINT)"
+    case "${1:-status}" in
+      open) shift || true; "$PY" "$VAULT_PY" init >/dev/null; xopen "${JARVIS_VAULT_DIR:-$HOME/JARVIS}" ;;
+      *)    exec "$PY" "$VAULT_PY" "$@" ;;
+    esac ;;
+  doctor)
+    case "${1:-}" in
+      --hermes) shift; exec hermes doctor "$@" ;;   # «сырой» доктор самого Hermes
+      *) [[ -f "$JARVIS_HOME/doctor.py" ]] || fail "doctor.py не установлен ($INSTALL_HINT)"
+         exec "$PY" "$JARVIS_HOME/doctor.py" "$@" ;;
+    esac ;;
+  update)
+    case "${1:-}" in
+      --check|check)     shift; exec "$PY" "$JARVIS_HOME/update.py" check "$@" ;;
+      --rollback|rollback) exec "$PY" "$JARVIS_HOME/update.py" rollback ;;
+      --status|status)   shift; exec "$PY" "$JARVIS_HOME/update.py" status "$@" ;;
+      --channel|channel) exec "$PY" "$JARVIS_HOME/update.py" set channel "${2:?stable|main}" ;;
+      --auto|auto)       exec "$PY" "$JARVIS_HOME/update.py" set auto "${2:?off|check|auto}" ;;
+      --hermes)          exec hermes update ;;
+      --yes|-y|"")       exec "$PY" "$JARVIS_HOME/update.py" apply ;;
+      --force)           exec "$PY" "$JARVIS_HOME/update.py" apply --force ;;
+      *) echo "jarvis update [--check|--rollback|--status|--force|--channel stable|main|--auto off|check|auto|--hermes]"; exit 2 ;;
+    esac ;;
+  version|--version|-v)
+    printf "JARVIS %s · Hermes %s\n" "$(cat "$JARVIS_HOME/VERSION" 2>/dev/null || echo '?')" "$(hermes --version 2>/dev/null | head -1 || echo '?')" ;;
+  app)
+    if [[ $IS_LINUX -eq 1 ]]; then
+      TRAY_PY="$JARVIS_HOME/tray/jarvis_tray.py"
+      case "${1:-open}" in
+        open|start) [[ -f "$TRAY_PY" ]] || fail "трей не установлен (bash install.linux.sh)"; nohup "$PY" "$TRAY_PY" >/dev/null 2>&1 & disown; say "трей запущен" ;;
+        quit)    pkill -f "jarvis_tray.py" 2>/dev/null || true; say "трей остановлен" ;;
+        status)  pgrep -f "jarvis_tray.py" >/dev/null && echo "трей JARVIS запущен (pid $(pgrep -f jarvis_tray.py | head -1))" || echo "трей JARVIS не запущен" ;;
+        build|debug) fail "на Linux нет отдельной сборки — трей запускается напрямую: jarvis app open" ;;
+        *) echo "jarvis app [open|quit|status]  (Linux: трей на pystray, аналог JARVIS.app)"; exit 2 ;;
+      esac
+    else
+      case "${1:-open}" in
+        open)    [[ -d "$HOME/Applications/JARVIS.app" ]] || fail "JARVIS.app не собрано — jarvis app build"; open -a "$HOME/Applications/JARVIS.app" ;;
+        build)   [[ -f "$JARVIS_HOME/app.src/build.sh" ]] || fail "исходники приложения не установлены (bash install.sh)"
+                 pkill -x JARVIS 2>/dev/null || true
+                 bash "$JARVIS_HOME/app.src/build.sh" "$HOME/Applications/JARVIS.app" && open -a "$HOME/Applications/JARVIS.app" ;;
+        quit)    osascript -e 'tell application "JARVIS" to quit' 2>/dev/null || pkill -x JARVIS || true ;;
+        status)  pgrep -x JARVIS >/dev/null && echo "JARVIS.app запущен (pid $(pgrep -x JARVIS | head -1)) — значок ◉ в строке меню" || echo "JARVIS.app не запущен"
+                 ls -t "$HOME/Library/Logs/DiagnosticReports/JARVIS-"* 2>/dev/null | head -1 | xargs -I{} echo "последний crash-отчёт: {}" ;;
+        debug)   [[ -x "$HOME/Applications/JARVIS.app/Contents/MacOS/JARVIS" ]] || fail "JARVIS.app не собрано — jarvis app build"
+                 pkill -x JARVIS 2>/dev/null || true; exec "$HOME/Applications/JARVIS.app/Contents/MacOS/JARVIS" ;;
+        *) echo "jarvis app [open|build|quit|status|debug]"; exit 2 ;;
+      esac
+    fi ;;
+  perms)
+    if [[ $IS_LINUX -eq 1 ]]; then
+      say "Linux не имеет единого центра разрешений — проверьте наличие нужных утилит:"
+      say "  X11: xdotool wmctrl xclip scrot   ·   Wayland: grim slurp wl-clipboard ydotool"
+      say "  Общее: playerctl brightnessctl upower bluez NetworkManager libnotify-bin espeak-ng"
+      say "jarvis selftest покажет, каких инструментов не хватает."
+    else
+      open "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+      sleep 1; open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+      sleep 1; open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+      sleep 1; open "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+    fi ;;
+  config)    exec hermes config edit ;;
+  logs)      tail -n 40 "$HERMES_HOME/logs/agent.log" "$HUD_LOG" 2>/dev/null; hermes logs --follow 2>/dev/null || true ;;
+  -h|--help|help) usage ;;
+  *)         exec hermes "$cmd" "$@" ;;   # всё остальное — прозрачно в hermes
+esac

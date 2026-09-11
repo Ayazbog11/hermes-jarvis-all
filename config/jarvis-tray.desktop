@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=JARVIS Tray
+Comment=J.A.R.V.I.S. on Hermes Agent — значок в трее (HUD/gateway/обновления)
+Exec=__PYTHON__ __HERMES_HOME__/jarvis/tray/jarvis_tray.py
+Icon=utilities-terminal
+Terminal=false
+X-GNOME-Autostart-enabled=true

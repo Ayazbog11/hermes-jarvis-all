@@ -1,0 +1,18 @@
+[Unit]
+Description=J.A.R.V.I.S. Gateway (Hermes Agent — Telegram/Discord/API)
+After=network.target graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=__HERMES_BIN__ gateway run
+Environment=HERMES_HOME=__HERMES_HOME__
+Environment=HOME=__HOME__
+Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=__HOME__
+Restart=on-failure
+RestartSec=15
+StandardOutput=append:__HERMES_HOME__/logs/jarvis-gateway.log
+StandardError=append:__HERMES_HOME__/logs/jarvis-gateway.log
+
+[Install]
+WantedBy=default.target

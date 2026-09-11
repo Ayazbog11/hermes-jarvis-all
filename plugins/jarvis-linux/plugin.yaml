@@ -1,0 +1,59 @@
+name: jarvis-linux
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: "J.A.R.V.I.S — управление Linux (X11/Wayland): приложения, громкость, яркость, музыка, напоминания, заметки, скриншоты, shell-скрипты"
+author: JARVIS Project
+license: MIT
+homepage: https://github.com/debug999-cyber/jarvis-hermes
+tags: [linux, jarvis, automation, desktop]
+
+provides_tools:
+  - linux_app
+  - linux_open
+  - linux_search
+  - linux_files
+  - linux_volume
+  - linux_brightness
+  - linux_dark_mode
+  - linux_power
+  - linux_wifi
+  - linux_bluetooth
+  - linux_battery
+  - linux_system_info
+  - linux_media
+  - linux_say
+  - linux_notify
+  - linux_screenshot
+  - linux_camera_snap
+  - linux_wallpaper
+  - linux_calendar
+  - linux_reminders
+  - linux_notes
+  - linux_clipboard
+  - linux_type
+  - linux_window
+  - linux_shortcut
+  - linux_file_manage
+  - linux_focus
+  - linux_shell
+
+provides_hooks: []
+
+config_schema:
+  allow_raw_shell:
+    type: bool
+    default: false
+    description: "Разрешить инструменту linux_shell выполнять произвольные bash-команды (иначе — только встроенные безопасные действия)"
+  screenshot_dir:
+    type: str
+    default: ""
+    description: "Куда сохранять скриншоты (пусто → $HERMES_HOME/cache/jarvis/screenshots)"
+  default_player:
+    type: str
+    default: "auto"
+    description: "MPRIS-плеер по умолчанию: auto | подстрока имени (например spotify)"
+  hud_url:
+    type: str
+    default: "http://127.0.0.1:8765"
+    description: "Адрес HUD — linux_say stop просит его заглушить озвучку в браузере"

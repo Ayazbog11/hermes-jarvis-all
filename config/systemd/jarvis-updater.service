@@ -1,0 +1,11 @@
+[Unit]
+Description=J.A.R.V.I.S. updater (daily check/apply)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=__PYTHON__ __HERMES_HOME__/jarvis/update.py auto
+Environment=HERMES_HOME=__HERMES_HOME__
+Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=append:__HERMES_HOME__/logs/jarvis-updater.log
+StandardError=append:__HERMES_HOME__/logs/jarvis-updater.log

@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily J.A.R.V.I.S. update check
+
+[Timer]
+OnCalendar=*-*-* 11:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

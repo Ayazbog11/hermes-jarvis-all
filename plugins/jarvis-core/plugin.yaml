@@ -1,0 +1,84 @@
+name: jarvis-core
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: "J.A.R.V.I.S — ядро: контекст окружения, шина событий HUD, голографические панели, брифинги, режимы фокуса"
+author: JARVIS Project
+license: MIT
+tags: [jarvis, hud, voice, assistant]
+
+provides_tools:
+  - jarvis_hud
+  - jarvis_timer
+  - jarvis_mode
+  - jarvis_weather
+  - jarvis_update
+
+provides_hooks:
+  - pre_llm_call
+  - post_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - on_session_start
+  - on_stream_delta
+  - on_stream_end
+
+# jarvis-core сам по себе кроссплатформенный (см. platform_compat.py); для «рук» на конкретной ОС
+# ставится ровно ОДИН из плагинов ниже — install.sh (macOS/Linux) ставит jarvis-macos,
+# install.ps1 (Windows) ставит jarvis-windows. Жёсткой manifest-зависимости больше нет,
+# чтобы установщик мог включить нужный вариант под текущую ОС.
+requires_plugins: []
+
+config_schema:
+  hud_url:
+    type: str
+    default: "http://127.0.0.1:8765"
+    description: "Адрес HUD-сервера, куда плагин шлёт события (tool calls, стрим, статус)"
+  user_name:
+    type: str
+    default: "сэр"
+    description: "Как JARVIS обращается к пользователю"
+  city:
+    type: str
+    default: "Zürich"
+    description: "Город для погоды и контекста"
+  inject_context:
+    type: bool
+    default: true
+    description: "Добавлять в каждый ход краткий контекст (время, батарея, активное приложение, режим)"
+  watchdog:
+    type: bool
+    default: true
+    description: "Фоновые локальные проверки без LLM: батарея (и календарь, если включено)"
+  battery_threshold:
+    type: int
+    default: 20
+    description: "Порог заряда для предупреждения, %"
+  watch_calendar:
+    type: bool
+    default: false
+    description: "Предупреждать о событиях календаря за 10 минут (требует доступ к Calendar)"
+  follow_focus:
+    type: bool
+    default: true
+    description: "Синхронизировать режим JARVIS с Focus macOS (Не беспокоить/Работа → focus, Сон → night)"
+  triggers:
+    type: bool
+    default: true
+    description: "Событийная проактивность: новые файлы в ~/JARVIS/inbox, возвращение к Mac, мало места на диске, отключение питания"
+  trigger_llm:
+    type: bool
+    default: true
+    description: "Разрешить триггерам звать модель (утренний брифинг при возвращении, разбор новых файлов). false = только уведомления"
+  disk_min_gb:
+    type: int
+    default: 20
+    description: "Порог свободного места на диске для предупреждения, ГБ"
+  idle_return_min:
+    type: int
+    default: 90
+    description: "Сколько минут без ввода считать «отошёл»; возвращение после этого = событие user.returned"
+  screen_context:
+    type: bool
+    default: true
+    description: "Фразы «что у меня на экране / посмотри сюда / что это за ошибка» → автоматический скриншот и подсказка модели вызвать vision_analyze"

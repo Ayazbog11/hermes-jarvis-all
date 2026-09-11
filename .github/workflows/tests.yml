@@ -1,0 +1,73 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  pytest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest pyyaml ruff
+      - run: ruff check .
+      - run: python -m pytest tests -q
+      - run: bash -n install.sh install.linux.sh bin/jarvis scripts/setup_cron.sh app/build.sh
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y shellcheck >/dev/null
+          shellcheck -S warning install.sh install.linux.sh get.sh get.linux.sh bin/jarvis scripts/setup_cron.sh app/build.sh
+      - name: Linux tray app compiles
+        if: runner.os == 'Linux'
+        run: python -m py_compile app-linux/jarvis_tray.py
+      - name: Swift app compiles
+        if: runner.os == 'macOS'
+        run: bash app/build.sh "$RUNNER_TEMP/JARVIS.app" && test -x "$RUNNER_TEMP/JARVIS.app/Contents/MacOS/JARVIS"
+  pytest-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest pyyaml ruff
+      - run: ruff check .
+      - run: python -m pytest tests -q
+      - name: PowerShell syntax check
+        shell: pwsh
+        run: |
+          $files = @("install.ps1", "bin/jarvis.ps1", "scripts/setup_cron.ps1", "get.ps1", "scripts/setup_scheduled_tasks.py")
+          foreach ($f in $files) {
+            if ($f.EndsWith(".ps1")) {
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
+              if ($errors) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+            }
+          }
+          python -m py_compile scripts/setup_scheduled_tasks.py app-windows/jarvis_tray.pyw
+      - name: PSScriptAnalyzer (errors only)
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -Repository PSGallery
+          Import-Module PSScriptAnalyzer
+          $files = @("install.ps1", "bin/jarvis.ps1", "scripts/setup_cron.ps1", "get.ps1")
+          $bad = @()
+          foreach ($f in $files) { $bad += Invoke-ScriptAnalyzer -Path $f -Severity Error }
+          if ($bad.Count -gt 0) { $bad | Format-Table -AutoSize; exit 1 }
+
+  hud-e2e:
+    # Настоящий браузер против HUD в demo-режиме: страница грузится без ошибок JS, чат отвечает, панели/события работают
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pytest playwright && python -m playwright install --with-deps chromium
+      - run: python -m pytest tests/e2e -q

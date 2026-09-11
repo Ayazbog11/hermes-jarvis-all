@@ -1,0 +1,139 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  J.A.R.V.I.S. — фрагмент конфигурации Hermes Agent для LINUX (X11/Wayland)
+#  install.sh (Linux) аккуратно ВЛИВАЕТ эти ключи в $HERMES_HOME/config.yaml
+#  (обычно ~/.hermes/config.yaml), не затирая то, что вы настроили сами.
+#  Отличия от config.jarvis.yaml (macOS): плагин jarvis-linux вместо
+#  jarvis-macos; TTS/STT остаются кроссплатформенными (Edge TTS/faster-whisper),
+#  офлайн-запасной голос — espeak-ng вместо macOS `say`.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Плагины JARVIS (обязательно, иначе инструменты не загрузятся) ──────────
+plugins:
+  enabled:
+    - jarvis-core
+    - jarvis-linux
+    - jarvis-brain
+  stream_reasoning_deltas: false
+  entries:
+    jarvis-core:
+      settings:
+        hud_url: "http://127.0.0.1:8765"
+        user_name: "сэр"
+        city: "Zürich"
+        inject_context: true
+        watchdog: true                   # локальные проверки батареи без LLM
+        battery_threshold: 20
+        watch_calendar: false            # true → напоминать о событиях за 10 минут + справка из базы знаний на HUD
+        follow_focus: true               # синхронизация с GNOME "Не беспокоить" (gsettings); на других DE — не действует
+    jarvis-brain:
+      settings:
+        inject_context: true             # релевантные знания в каждом ходе
+        context_limit: 5
+        min_score: 1.2
+        log_turns: true                  # журнал ходов для ночного дневника
+        auto_capture: true               # «запомни …» сохраняется даже без вызова инструмента
+        export_path: ""                  # пусто → $HERMES_HOME/jarvis/BRAIN.md
+        backup_mirror: ""                # напр. "~/OneDrive/JARVIS" — зеркало бэкапа
+        log_failures: true               # журнал сбоев инструментов → ночная самодиагностика
+        stt_vocabulary: true             # имена из базы → подсказка Whisper
+        voice_polish: true               # голосовой ответ без markdown, до 4 предложений
+    jarvis-linux:
+      settings:
+        allow_raw_shell: false           # включите, если доверяете модели произвольные bash-команды
+        screenshot_dir: ""                # пусто → $HERMES_HOME/cache/jarvis/screenshots
+        default_player: "auto"            # auto | подстрока имени MPRIS-плеера (spotify, vlc…)
+
+# ── Голос: запись с микрофона в CLI/TUI ────────────────────────────────────
+voice:
+  record_key: "ctrl+b"
+  max_recording_seconds: 120
+  auto_tts: true                 # включать озвучку сразу при старте voice mode
+  beep_enabled: true
+  silence_threshold: 200
+  silence_duration: 2.0          # быстрее реагирует, чем дефолтные 3.0
+  stop_phrases: ["стоп", "хватит", "спасибо, всё", "stop"]
+
+# ── Распознавание речи (STT) — локально, бесплатно, без ключей ─────────────
+stt:
+  enabled: true
+  provider: "local"              # faster-whisper; альтернативы: groq | openai | mistral | xai
+  local:
+    model: "small"               # tiny | base | small | medium | large-v3  (small — лучший баланс для русского)
+    language: "ru"               # ISO-639-1; пусто = автоопределение
+
+# ── Синтез речи (TTS) — Edge TTS бесплатно; ElevenLabs/OpenAI — по ключу ───
+tts:
+  provider: "edge"               # edge | elevenlabs | openai | gemini | espeak (встроенный офлайн Linux)
+  speed: 1.05
+  edge:
+    voice: "ru-RU-DmitryNeural"  # мужской русский; варианты: ru-RU-SvetlanaNeural, en-GB-RyanNeural (классический «Jarvis»)
+  elevenlabs:
+    voice_id: "pNInz6obpgDQGcFmaJgB"
+    model_id: "eleven_multilingual_v2"
+  openai:
+    model: "gpt-4o-mini-tts"
+    voice: "onyx"
+  espeak:
+    voice: "ru"                  # espeak-ng голос/язык (ru, en-us…); нужен: sudo apt install espeak-ng
+
+# ── Wake word «Hey Jarvis» — полностью локально (openWakeWord) ─────────────
+wake_word:
+  enabled: true
+  surface: auto                  # auto | cli | tui | gui
+  provider: openwakeword         # openwakeword | sherpa (любая фраза) | porcupine
+  phrase: "hey jarvis"
+  sensitivity: 0.6
+  confirmation_frames: 3
+  start_new_session: false       # продолжать текущий диалог, а не начинать новый
+  openwakeword:
+    model: hey_jarvis            # встроенная модель openWakeWord
+  porcupine:
+    keyword: jarvis
+
+# ── Инструменты: что доступно агенту в CLI (остальные платформы — по своим пресетам)
+# Полный список: hermes tools
+toolsets:
+  hermes-cli:
+    - web
+    - terminal
+    - file
+    - browser
+    - vision
+    - image_gen
+    - tts
+    - skills
+    - memory
+    - session_search
+    - cronjob
+    - todo
+    - clarify
+    - code_execution
+    - delegation
+    - jarvis_core
+    - jarvis_linux
+    - jarvis_brain
+
+# ── Память и контекст ──────────────────────────────────────────────────────
+memory:
+  enabled: true
+  nudge_interval: 20             # напоминать себе сохранять память каждые N ходов
+
+# ── Безопасность: подтверждение опасных команд ────────────────────────────
+approvals:
+  mode: smart                    # manual | smart | off
+  timeout: 120
+
+# ── Терминал ───────────────────────────────────────────────────────────────
+terminal:
+  backend: local
+  cwd: "~"
+  timeout: 180
+
+# ── Компрессия контекста (для длинных голосовых сессий) ───────────────────
+compression:
+  enabled: true
+  threshold: 0.75
+
+# ── Cron: модель для фоновых задач (можно дешевле основной) ───────────────
+cron:
+  preflight: true

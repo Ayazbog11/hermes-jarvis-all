@@ -1,0 +1,60 @@
+name: jarvis-windows
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: "J.A.R.V.I.S — управление Windows: приложения, громкость, яркость, музыка, календарь (Outlook), напоминания, заметки, скриншоты, PowerShell-скрипты"
+author: JARVIS Project
+license: MIT
+homepage: https://github.com/debug999-cyber/jarvis-hermes
+tags: [windows, jarvis, automation, desktop]
+
+provides_tools:
+  - win_app
+  - win_open
+  - win_search
+  - win_explorer
+  - win_volume
+  - win_brightness
+  - win_dark_mode
+  - win_power
+  - win_wifi
+  - win_bluetooth
+  - win_battery
+  - win_system_info
+  - win_media
+  - win_say
+  - win_notify
+  - win_screenshot
+  - win_camera_snap
+  - win_wallpaper
+  - win_calendar
+  - win_reminders
+  - win_notes
+  - win_clipboard
+  - win_type
+  - win_window
+  - win_shortcut
+  - win_file_manage
+  - win_contacts
+  - win_focus
+  - win_powershell
+
+provides_hooks: []
+
+config_schema:
+  allow_raw_powershell:
+    type: bool
+    default: false
+    description: "Разрешить инструменту win_powershell выполнять произвольные скрипты (иначе — только встроенные безопасные действия)"
+  screenshot_dir:
+    type: str
+    default: ""
+    description: "Куда сохранять скриншоты (пусто → %HERMES_HOME%\\cache\\jarvis\\screenshots)"
+  default_player:
+    type: str
+    default: "auto"
+    description: "Плеер по умолчанию: auto | media | spotify"
+  hud_url:
+    type: str
+    default: "http://127.0.0.1:8765"
+    description: "Адрес HUD — win_say stop просит его заглушить озвучку в браузере"

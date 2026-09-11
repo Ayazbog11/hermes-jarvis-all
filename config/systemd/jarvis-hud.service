@@ -1,0 +1,16 @@
+[Unit]
+Description=J.A.R.V.I.S. HUD (Hermes Agent)
+After=network.target graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=__PYTHON__ __HERMES_HOME__/jarvis/hud/server.py --port 8765
+Environment=HERMES_HOME=__HERMES_HOME__
+Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:__HERMES_HOME__/logs/jarvis-hud.log
+StandardError=append:__HERMES_HOME__/logs/jarvis-hud.log
+
+[Install]
+WantedBy=default.target
