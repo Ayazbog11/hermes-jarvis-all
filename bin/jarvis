@@ -107,6 +107,7 @@ J.A.R.V.I.S. on Hermes Agent
   jarvis version         версии JARVIS и Hermes
   jarvis perms           macOS: открыть нужные панели разрешений; Linux: список системных утилит для проверки
   jarvis calendar [setup|status|today|tomorrow|logout]   Google Calendar (единый для всех ОС, не требует Outlook)
+  jarvis telegram [setup|status|unread|dialogs|logout]   личный Telegram (MTProto userbot — чтение/отправка от вашего имени)
   jarvis ollama [status|list|recommend|pull <модель>|use <модель> [--vision]]   локальные модели Ollama, без ключей и интернета
   jarvis usage [--by-model|--by-platform|--by-day|--since ...|--json]   сколько токенов/денег потрачено (локально, из state.db)
   jarvis config          открыть config.yaml Hermes в редакторе
@@ -264,6 +265,10 @@ case "$cmd" in
     CAL_PY="$JARVIS_HOME/calendar_cli.py"
     [[ -f "$CAL_PY" ]] || fail "calendar_cli.py не установлен ($INSTALL_HINT)"
     exec "$PY" "$CAL_PY" "$@" ;;
+  telegram)
+    TG_PY="$JARVIS_HOME/telegram_cli.py"
+    [[ -f "$TG_PY" ]] || fail "telegram_cli.py не установлен ($INSTALL_HINT)"
+    exec "$PY" "$TG_PY" "$@" ;;
   ollama)
     OLLAMA_PY="$JARVIS_HOME/ollama_local.py"
     [[ -f "$OLLAMA_PY" ]] || fail "ollama_local.py не установлен ($INSTALL_HINT)"

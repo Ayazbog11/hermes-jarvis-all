@@ -189,6 +189,15 @@ if (-not $NoVoice) {
     }
 }
 
+# ─── 3.5. Telegram userbot (telethon) ──────────────────────────────────────
+Step "Telegram (личный аккаунт, MTProto): telethon"
+try {
+    Invoke-Pip @("telethon")
+    Ok "telethon установлен"
+} catch {
+    WarnMsg "telethon не установился — jarvis_telegram будет недоступен (pip install telethon вручную) ($($_.Exception.Message))"
+}
+
 if (-not $NoApp) {
     Step "Трей-приложение: pystray, pillow"
     try {
@@ -250,7 +259,7 @@ $hudDst = Join-Path $JarvisHomeDir "hud"
 Remove-Item -Recurse -Force $hudDst -ErrorAction SilentlyContinue
 Copy-Item -Recurse -Force (Join-Path $JarvisSrc "hud") $hudDst
 Copy-Item (Join-Path $JarvisSrc "config\config.jarvis.windows.yaml") (Join-Path $JarvisHomeDir "config.jarvis.yaml") -Force
-foreach ($f in @("merge_config.py", "selftest.py", "update.py", "doctor.py", "make_shortcuts.py", "setup_scheduled_tasks.py", "calendar_cli.py", "ollama_local.py", "usage_report.py", "model_switch.py")) {
+foreach ($f in @("merge_config.py", "selftest.py", "update.py", "doctor.py", "make_shortcuts.py", "setup_scheduled_tasks.py", "calendar_cli.py", "telegram_cli.py", "ollama_local.py", "usage_report.py", "model_switch.py")) {
     Copy-Item (Join-Path $JarvisSrc "scripts\$f") (Join-Path $JarvisHomeDir $f) -Force
 }
 Copy-Item (Join-Path $JarvisSrc "scripts\setup_cron.ps1") (Join-Path $JarvisHomeDir "setup_cron.ps1") -Force

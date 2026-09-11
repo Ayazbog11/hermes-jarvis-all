@@ -148,6 +148,7 @@ J.A.R.V.I.S. on Hermes Agent (Windows)
   jarvis version         версии JARVIS и Hermes
   jarvis perms           открыть нужные разделы «Параметры Windows» (микрофон, уведомления, тихий час)
   jarvis calendar [setup|status|today|tomorrow|logout]   Google Calendar (без Outlook)
+  jarvis telegram [setup|status|unread|dialogs|logout]   личный Telegram (MTProto userbot — чтение/отправка от вашего имени)
   jarvis ollama [status|list|recommend|pull <модель>|use <модель> [-vision]]   локальные модели Ollama, без ключей и интернета
   jarvis usage [-by-model|-by-platform|-by-day|-since ...|-json]   сколько токенов/денег потрачено (локально, из state.db)
   jarvis config          открыть config.yaml Hermes в редакторе
@@ -409,6 +410,12 @@ switch ($Command) {
         $calPy = Join-Path $JarvisHome "calendar_cli.py"
         if (-not (Test-Path $calPy)) { Fail "calendar_cli.py не установлен (переустановите: install.ps1)" }
         & $Py $calPy @Rest
+        break
+    }
+    "telegram" {
+        $tgPy = Join-Path $JarvisHome "telegram_cli.py"
+        if (-not (Test-Path $tgPy)) { Fail "telegram_cli.py не установлен (переустановите: install.ps1)" }
+        & $Py $tgPy @Rest
         break
     }
     "ollama" {

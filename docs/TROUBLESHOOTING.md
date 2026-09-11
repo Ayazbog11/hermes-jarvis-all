@@ -184,6 +184,14 @@ Windows не даёт публичного API ни на чтение, ни на
 `jarvis calendar setup` в терминале (один раз, откроет браузер для входа в Google). `jarvis calendar
 status` покажет, настроен ли client и авторизован ли аккаунт.
 
+### Telegram (личный аккаунт, MTProto) не отвечает / needs_setup
+
+`jarvis_telegram` (userbot через Telethon/MTProto, не бот) — см. подробную настройку в
+`docs/TELEGRAM.md`. Если инструмент возвращает `needs_setup: true`, выполните `jarvis telegram
+setup` в терминале (один раз: `api_id`/`api_hash` с my.telegram.org, затем вход по номеру телефона
+и коду). `jarvis telegram status` покажет, настроен ли и под каким аккаунтом авторизован. Если
+`telethon не установлен` — `pip install telethon` (ставится автоматически установщиком).
+
 ### Outlook (fallback-календарь и контакты)
 
 `win_calendar` (только как fallback — по умолчанию используется `jarvis_calendar`/Google) и

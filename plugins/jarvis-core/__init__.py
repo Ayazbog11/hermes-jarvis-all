@@ -31,6 +31,7 @@ from . import gcalendar
 from . import messenger
 from . import platform_compat as pc
 from . import schemas, state
+from . import telegram_userbot
 from . import voice_note
 from . import working_memory
 from .hud_client import HudClient
@@ -462,6 +463,59 @@ def tool_jarvis_working_memory(args: dict, **kwargs) -> str:
     return json.dumps({"success": False, "error": f"Неизвестное действие: {action}"}, ensure_ascii=False)
 
 
+def tool_jarvis_telegram(args: dict, **kwargs) -> str:
+    """Личный аккаунт Telegram владельца через MTProto (см. telegram_userbot.py) — не Bot API."""
+    action = args.get("action") or "status"
+    tu = telegram_userbot
+    if action == "status":
+        return json.dumps(tu.status(), ensure_ascii=False)
+    if not tu.is_available():
+        return json.dumps({"success": False, "error": "telethon не установлен (pip install telethon)"}, ensure_ascii=False)
+    if not tu.has_credentials() or not tu.is_authorized():
+        return json.dumps({
+            "success": False, "needs_setup": True,
+            "error": "Telegram userbot не настроен/не авторизован. Пользователю нужно один раз "
+                     "выполнить `jarvis telegram setup` в терминале.",
+        }, ensure_ascii=False)
+
+    if action == "dialogs":
+        result = tu.list_dialogs(limit=int(args.get("limit") or 20), unread_only=bool(args.get("unread_only")))
+        return json.dumps(result, ensure_ascii=False)
+    if action == "unread":
+        return json.dumps(tu.unread_summary(), ensure_ascii=False)
+    if action == "read":
+        chat = args.get("chat", "")
+        if not chat:
+            return json.dumps({"success": False, "error": "Нужен chat (см. dialogs/unread)"}, ensure_ascii=False)
+        result = tu.read_messages(chat, limit=int(args.get("limit") or 20),
+                                    unread_only=bool(args.get("unread_only")), mark_read=bool(args.get("mark_read")))
+        return json.dumps(result, ensure_ascii=False)
+    if action == "mark_read":
+        chat = args.get("chat", "")
+        if not chat:
+            return json.dumps({"success": False, "error": "Нужен chat"}, ensure_ascii=False)
+        return json.dumps(tu.mark_read(chat), ensure_ascii=False)
+    if action == "send":
+        chat = args.get("chat", "")
+        if not chat:
+            return json.dumps({"success": False, "error": "Нужен chat"}, ensure_ascii=False)
+        return json.dumps(tu.send_text(chat, args.get("text", "")), ensure_ascii=False)
+    if action == "send_file":
+        chat = args.get("chat", "")
+        if not chat:
+            return json.dumps({"success": False, "error": "Нужен chat"}, ensure_ascii=False)
+        result = tu.send_file(chat, args.get("path", ""), caption=args.get("caption") or None,
+                                voice_note=bool(args.get("voice_note")))
+        return json.dumps(result, ensure_ascii=False)
+    if action == "download_media":
+        chat = args.get("chat", "")
+        message_id = args.get("message_id")
+        if not chat or not message_id:
+            return json.dumps({"success": False, "error": "Нужны chat и message_id (из read)"}, ensure_ascii=False)
+        return json.dumps(tu.download_media(chat, int(message_id)), ensure_ascii=False)
+    return json.dumps({"success": False, "error": f"Неизвестное действие: {action}"}, ensure_ascii=False)
+
+
 # ══════════════════════════════ watchdog (без LLM) ═════════════════════════
 
 class Watchdog:
@@ -663,6 +717,7 @@ def register(ctx) -> None:
     ctx.register_tool(name="jarvis_send_message", toolset=TOOLSET, schema=schemas.JARVIS_SEND_MESSAGE, handler=tool_jarvis_send_message)
     ctx.register_tool(name="jarvis_voice_note", toolset=TOOLSET, schema=schemas.JARVIS_VOICE_NOTE, handler=tool_jarvis_voice_note)
     ctx.register_tool(name="jarvis_working_memory", toolset=TOOLSET, schema=schemas.JARVIS_WORKING_MEMORY, handler=tool_jarvis_working_memory)
+    ctx.register_tool(name="jarvis_telegram", toolset=TOOLSET, schema=schemas.JARVIS_TELEGRAM, handler=tool_jarvis_telegram)
 
     # бандл-скиллы плагина (jarvis-core:morning-briefing и т.д.)
     if _SKILLS_DIR.exists():

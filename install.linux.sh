@@ -141,6 +141,17 @@ if [[ $INSTALL_VOICE -eq 1 ]]; then
   } ) && ok "voice extras установлены" || warn "часть голосовых пакетов не установилась — см. docs/TROUBLESHOOTING.md"
 fi
 
+# ─── 3.5. Telegram userbot (telethon) ─────────────────────────────────────
+step "Telegram (личный аккаунт, MTProto): telethon"
+( cd "$HERMES_REPO" && {
+    if command -v uv >/dev/null 2>&1; then
+      export VIRTUAL_ENV="$HERMES_REPO/venv"
+      uv pip install -q telethon || true
+    else
+      "$VENV_PY" -m pip install -q telethon || true
+    fi
+} ) && ok "telethon установлен" || warn "telethon не установился — jarvis_telegram будет недоступен (pip install telethon вручную)"
+
 # ─── 4. плагины ───────────────────────────────────────────────────────────
 step "Плагины JARVIS → $HERMES_HOME/plugins"
 mkdir -p "$HERMES_HOME/plugins"
@@ -182,6 +193,7 @@ cp "$JARVIS_SRC/scripts/update.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/doctor.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/make_shortcuts.py" "$JARVIS_HOME/" 2>/dev/null || true
 cp "$JARVIS_SRC/scripts/calendar_cli.py" "$JARVIS_HOME/"
+cp "$JARVIS_SRC/scripts/telegram_cli.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/ollama_local.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/usage_report.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/model_switch.py" "$JARVIS_HOME/"

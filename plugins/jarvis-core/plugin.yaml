@@ -17,6 +17,7 @@ provides_tools:
   - jarvis_send_message
   - jarvis_voice_note
   - jarvis_working_memory
+  - jarvis_telegram
 
 provides_hooks:
   - pre_llm_call
