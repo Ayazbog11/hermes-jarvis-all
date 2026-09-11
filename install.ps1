@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   ═══════════════════════════════════════════════════════════════════════════
    J.A.R.V.I.S. on Hermes Agent — установщик для Windows 10/11 (native, без WSL)

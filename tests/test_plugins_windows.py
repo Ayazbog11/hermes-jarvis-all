@@ -19,7 +19,7 @@ IS_WINDOWS = platform.system() == "Windows"
 # ─────────────────────────── манифест и схемы ───────────────────────────────
 
 def test_manifest_valid():
-    m = yaml.safe_load((PLUGINS / "jarvis-windows" / "plugin.yaml").read_text())
+    m = yaml.safe_load((PLUGINS / "jarvis-windows" / "plugin.yaml").read_text(encoding="utf-8"))
     assert m["name"] == "jarvis-windows"
     assert "version" in m and "description" in m
     assert isinstance(m.get("provides_tools", []), list)
@@ -27,7 +27,7 @@ def test_manifest_valid():
 
 def test_manifest_lists_all_tools():
     win = load_plugin("jarvis-windows")
-    m = yaml.safe_load((PLUGINS / "jarvis-windows" / "plugin.yaml").read_text())
+    m = yaml.safe_load((PLUGINS / "jarvis-windows" / "plugin.yaml").read_text(encoding="utf-8"))
     declared = set(m["provides_tools"])
     actual = {s["name"] for s in win.schemas.ALL_SCHEMAS}
     assert declared == actual, f"manifest≠schemas: {declared ^ actual}"
@@ -116,7 +116,7 @@ def test_type_rejects_unknown_modifiers():
 
 
 def test_windows_manifest_declares_no_macos_plugin_dependency():
-    core_manifest = yaml.safe_load((PLUGINS / "jarvis-core" / "plugin.yaml").read_text())
+    core_manifest = yaml.safe_load((PLUGINS / "jarvis-core" / "plugin.yaml").read_text(encoding="utf-8"))
     requires = core_manifest.get("requires_plugins", [])
     assert "jarvis-macos" not in requires and "jarvis-windows" not in requires
 
@@ -127,7 +127,7 @@ def test_file_manage_safe_ops_platform_independent(tmp_path, monkeypatch):
     monkeypatch.setattr(win.tools.win, "IS_WINDOWS", True)
     monkeypatch.setattr(win.win, "IS_WINDOWS", True)
     f = tmp_path / "a.txt"
-    f.write_text("x")
+    f.write_text("x", encoding="utf-8")
     out = json.loads(win.tools.win_file_manage({"action": "rename", "path": str(f), "new_name": "b.txt"}))
     assert out["success"] and (tmp_path / "b.txt").exists()
     out = json.loads(win.tools.win_file_manage({"action": "mkdir", "path": str(tmp_path / "sub")}))

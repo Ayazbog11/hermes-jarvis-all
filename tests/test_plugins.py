@@ -18,7 +18,7 @@ IS_MAC = platform.system() == "Darwin"
 
 @pytest.mark.parametrize("name", ["jarvis-core", "jarvis-macos", "jarvis-brain"])
 def test_manifest_valid(name):
-    m = yaml.safe_load((PLUGINS / name / "plugin.yaml").read_text())
+    m = yaml.safe_load((PLUGINS / name / "plugin.yaml").read_text(encoding="utf-8"))
     assert m["name"] == name
     assert "version" in m and "description" in m
     assert isinstance(m.get("provides_tools", []), list)
@@ -26,7 +26,7 @@ def test_manifest_valid(name):
 
 def test_macos_manifest_lists_all_tools():
     macos = load_plugin("jarvis-macos")
-    m = yaml.safe_load((PLUGINS / "jarvis-macos" / "plugin.yaml").read_text())
+    m = yaml.safe_load((PLUGINS / "jarvis-macos" / "plugin.yaml").read_text(encoding="utf-8"))
     declared = set(m["provides_tools"])
     actual = {s["name"] for s in macos.schemas.ALL_SCHEMAS}
     assert declared == actual, f"manifest≠schemas: {declared ^ actual}"
@@ -72,7 +72,7 @@ def test_core_register(ctx):
     assert {"brief", "focus", "timer"} <= set(ctx.commands)
     assert {"morning-briefing", "mac-control"} <= set(ctx.skills)
     for p in ctx.skills.values():
-        assert p.exists() and p.read_text().startswith("---")
+        assert p.exists() and p.read_text(encoding="utf-8").startswith("---")
 
 
 # ─────────────────────────── обработчики ───────────────────────────────────
@@ -109,8 +109,9 @@ def test_resolve_target():
     r = macos.mac.resolve_target
     assert r("youtube.com") == "https://youtube.com"
     assert r("https://a.b/c") == "https://a.b/c"
-    assert r("Загрузки").endswith("/Downloads")
-    assert r("~/x.txt").endswith("/x.txt") and not r("~/x.txt").startswith("~")
+    assert r("Загрузки").replace("\\", "/").endswith("/Downloads")
+    resolved = r("~/x.txt").replace("\\", "/")
+    assert resolved.endswith("/x.txt") and not resolved.startswith("~")
 
 
 def test_as_str_escapes():
@@ -210,7 +211,7 @@ def test_watchdog_calendar_dedupe(monkeypatch):
 def test_file_manage_safe_ops(tmp_path, monkeypatch):
     macos = load_plugin("jarvis-macos")
     monkeypatch.setattr(macos.tools.mac, "IS_MAC", True)  # логика путей платформонезависима
-    f = tmp_path / "a.txt"; f.write_text("x")
+    f = tmp_path / "a.txt"; f.write_text("x", encoding="utf-8")
     out = json.loads(macos.tools.mac_file_manage({"action": "rename", "path": str(f), "new_name": "b.txt"}))
     assert out["success"] and (tmp_path / "b.txt").exists()
     out = json.loads(macos.tools.mac_file_manage({"action": "rename", "path": str(tmp_path / "b.txt"), "new_name": "../evil"}))
@@ -240,14 +241,14 @@ def test_watchdog_focus_sync(monkeypatch, tmp_path):
     db = tmp_path / "Library" / "DoNotDisturb" / "DB"; db.mkdir(parents=True)
     monkeypatch.setattr(core.Path, "home", staticmethod(lambda: tmp_path))
     (db / "ModeConfigurations.json").write_text(json.dumps({"data": [{"modeConfigurations": {
-        "com.apple.focus.work": {"mode": {"name": "Работа"}}, "com.apple.sleep.sleep-mode": {"mode": {"name": "Сон"}}}}]}))
-    (db / "Assertions.json").write_text(json.dumps({"data": [{"storeAssertionRecords": []}]}))
+        "com.apple.focus.work": {"mode": {"name": "Работа"}}, "com.apple.sleep.sleep-mode": {"mode": {"name": "Сон"}}}}]}), encoding="utf-8")
+    (db / "Assertions.json").write_text(json.dumps({"data": [{"storeAssertionRecords": []}]}), encoding="utf-8")
     assert wd.tick() == [] and wd.macos_focus() == ""          # фокуса нет — не событие
     (db / "Assertions.json").write_text(json.dumps({"data": [{"storeAssertionRecords": [
-        {"assertionStartDateTimestamp": 1, "assertionDetails": {"assertionDetailsModeIdentifier": "com.apple.focus.work"}}]}]}))
+        {"assertionStartDateTimestamp": 1, "assertionDetails": {"assertionDetailsModeIdentifier": "com.apple.focus.work"}}]}]}), encoding="utf-8")
     assert wd.tick() == ["focus:Работа->focus"] and core.state.get_mode() == "focus"
     assert wd.tick() == []                                       # без изменений — тишина
-    (db / "Assertions.json").write_text(json.dumps({"data": [{"storeAssertionRecords": []}]}))
+    (db / "Assertions.json").write_text(json.dumps({"data": [{"storeAssertionRecords": []}]}), encoding="utf-8")
     assert wd.tick() == ["focus:->normal"] and core.state.get_mode() == "normal"
     assert wd.map_focus("Sleep") == "night" and wd.map_focus("Unknown mode") is None
     (db / "Assertions.json").unlink()
@@ -341,15 +342,15 @@ def test_triggers_inbox_return_and_quiet(tmp_path, monkeypatch):
                        runner=lambda p: prompts.append(p) or "Это договор с Acme.")
     monkeypatch.setattr(tr, "detect_disk", lambda now: [])
     # первый тик — только запоминаем содержимое inbox, не шумим
-    (vault / "inbox" / "old.md").write_text("x")
+    (vault / "inbox" / "old.md").write_text("x", encoding="utf-8")
     assert tr.tick(now=1000.0, idle=0) == []
     # новый файл → событие + модель
-    (vault / "inbox" / "договор.pdf").write_text("y")
+    (vault / "inbox" / "договор.pdf").write_text("y", encoding="utf-8")
     assert tr.tick(now=1100.0, idle=0) == ["vault.inbox"]
     import time as _t; _t.sleep(0.05)
     assert prompts and "договор.pdf" in prompts[0] and "Это договор с Acme." in notes[-1]
     # cooldown: ещё файл через минуту — событие есть, модель не зовём
-    (vault / "inbox" / "ещё.txt").write_text("z")
+    (vault / "inbox" / "ещё.txt").write_text("z", encoding="utf-8")
     assert tr.tick(now=1160.0, idle=0) == ["vault.inbox"] and len(prompts) == 1
     # возвращение утром → брифинг (после cooldown)
     import datetime as dt
@@ -359,7 +360,7 @@ def test_triggers_inbox_return_and_quiet(tmp_path, monkeypatch):
     _t.sleep(0.05); assert "брифинг" in prompts[-1]
     # в режиме focus не-срочное подавляется
     mode["m"] = "focus"
-    (vault / "inbox" / "n3.txt").write_text("q")
+    (vault / "inbox" / "n3.txt").write_text("q", encoding="utf-8")
     assert tr.tick(now=morning + 4000, idle=0) == []
     # power: отключили при 25 % → уведомление без LLM
     mode["m"] = "normal"; n0 = len(prompts)

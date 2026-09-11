@@ -36,6 +36,17 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+# На Windows stdout/stderr при перенаправлении в файл/пайп (не TTY) используют системную
+# кодировку консоли (обычно cp1252), а не UTF-8 — любой print() с кириллицей тогда падает
+# с UnicodeEncodeError вместо того, чтобы просто напечататься. На Linux/macOS это не нужно
+# (там локаль почти всегда UTF-8), поэтому ограничиваемся Windows.
+if sys.platform == "win32":  # pragma: no cover — покрыто CI на windows-latest
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
 HERMES_HOME = Path(os.environ.get("HERMES_HOME") or (os.environ.get("LOCALAPPDATA", "") + "/hermes" if sys.platform == "win32" else "~/.hermes")).expanduser()
 JARVIS_HOME = HERMES_HOME / "jarvis"
 INSTALL_JSON = JARVIS_HOME / "install.json"
@@ -67,7 +78,7 @@ def now_iso() -> str:
 
 def read_json(p: Path, default: dict | None = None) -> dict:
     try:
-        return json.loads(p.read_text())
+        return json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return dict(default or {})
 
@@ -75,7 +86,7 @@ def read_json(p: Path, default: dict | None = None) -> dict:
 def write_json(p: Path, data: dict) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(p)
 
 

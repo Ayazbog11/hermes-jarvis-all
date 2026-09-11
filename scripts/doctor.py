@@ -29,6 +29,17 @@ import time
 import urllib.request
 from pathlib import Path
 
+# На Windows stdout/stderr при перенаправлении в файл/пайп (не TTY) используют системную
+# кодировку консоли (обычно cp1252), а не UTF-8 — любой print() с кириллицей тогда падает
+# с UnicodeEncodeError вместо того, чтобы просто напечататься. На Linux/macOS это не нужно
+# (там локаль почти всегда UTF-8), поэтому ограничиваемся Windows.
+if sys.platform == "win32":  # pragma: no cover — покрыто CI на windows-latest
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
 JARVIS_HOME = HERMES_HOME / "jarvis"
 HUD_PORT = int(os.environ.get("JARVIS_HUD_PORT", "8765"))
@@ -101,7 +112,7 @@ def http(url: str, timeout: float = 2.0, headers: dict | None = None) -> tuple[i
 def read_env() -> dict:
     out = {}
     try:
-        for line in (HERMES_HOME / ".env").read_text().splitlines():
+        for line in (HERMES_HOME / ".env").read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.lstrip().startswith("#"):
                 k, v = line.split("=", 1)
                 out[k.strip()] = v.split("#", 1)[0].strip().strip('"').strip("'")
@@ -112,11 +123,11 @@ def read_env() -> dict:
 
 def write_env(updates: dict) -> None:
     p = HERMES_HOME / ".env"
-    lines = p.read_text().splitlines() if p.exists() else []
+    lines = p.read_text(encoding="utf-8").splitlines() if p.exists() else []
     for k, v in updates.items():
         lines = [ln for ln in lines if not ln.startswith(f"{k}=")]
         lines.append(f"{k}={v}")
-    p.write_text("\n".join(lines) + "\n")
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
     os.chmod(p, 0o600)
 
 
@@ -361,11 +372,11 @@ def check_version(fix: bool) -> Check:
     c = Check("Версия JARVIS")
     inst, upd = {}, {}
     try:
-        inst = json.loads((JARVIS_HOME / "install.json").read_text())
+        inst = json.loads((JARVIS_HOME / "install.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return c.warn("install.json не найден — установка неполная", "bash install.sh")
     try:
-        upd = json.loads((JARVIS_HOME / "update.json").read_text())
+        upd = json.loads((JARVIS_HOME / "update.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         pass
     v = inst.get("version", "?")

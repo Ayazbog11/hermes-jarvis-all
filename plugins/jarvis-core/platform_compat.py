@@ -104,8 +104,8 @@ def battery_state() -> tuple[int | None, bool]:
         try:
             base = Path("/sys/class/power_supply")
             for entry in base.glob("BAT*"):
-                pct = int((entry / "capacity").read_text().strip())
-                status = (entry / "status").read_text().strip().lower()
+                pct = int((entry / "capacity").read_text(encoding="utf-8").strip())
+                status = (entry / "status").read_text(encoding="utf-8").strip().lower()
                 return pct, status == "charging"
         except (OSError, ValueError):
             pass
@@ -300,13 +300,13 @@ def current_focus() -> str | None:
     # каталог берётся через Path.home() — на не-macOS обычно просто не существует → None.
     base = Path.home() / "Library" / "DoNotDisturb" / "DB"
     try:
-        assertions = json.loads((base / "Assertions.json").read_text())
+        assertions = json.loads((base / "Assertions.json").read_text(encoding="utf-8"))
         records = (assertions.get("data") or [{}])[0].get("storeAssertionRecords") or []
         if not records:
             return ""
         rec = max(records, key=lambda r: r.get("assertionStartDateTimestamp", 0))
         mode_id = rec.get("assertionDetails", {}).get("assertionDetailsModeIdentifier", "")
-        configs = json.loads((base / "ModeConfigurations.json").read_text())
+        configs = json.loads((base / "ModeConfigurations.json").read_text(encoding="utf-8"))
         modes = (configs.get("data") or [{}])[0].get("modeConfigurations") or {}
         mode = modes.get(mode_id, {}).get("mode", {})
         return mode.get("name") or mode_id.rsplit(".", 1)[-1] or ""

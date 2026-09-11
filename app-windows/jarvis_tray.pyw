@@ -37,6 +37,17 @@ except ImportError:
     )
     raise
 
+# На Windows stdout/stderr при перенаправлении в файл/пайп (не TTY) используют системную
+# кодировку консоли (обычно cp1252), а не UTF-8 — любой print() с кириллицей тогда падает
+# с UnicodeEncodeError вместо того, чтобы просто напечататься. На Linux/macOS это не нужно
+# (там локаль почти всегда UTF-8), поэтому ограничиваемся Windows.
+if sys.platform == "win32":  # pragma: no cover — покрыто CI на windows-latest
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
 IS_WINDOWS = sys.platform == "win32"
 
 HERMES_HOME = Path(os.environ.get("HERMES_HOME") or

@@ -35,6 +35,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+# На Windows stdout/stderr при перенаправлении в файл/пайп (не TTY) используют системную
+# кодировку консоли (обычно cp1252), а не UTF-8 — любой print() с кириллицей тогда падает
+# с UnicodeEncodeError вместо того, чтобы просто напечататься. На Linux/macOS это не нужно
+# (там локаль почти всегда UTF-8), поэтому ограничиваемся Windows.
+if sys.platform == "win32":  # pragma: no cover — покрыто CI на windows-latest
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
 HERE = Path(__file__).parent
 STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
@@ -64,7 +75,7 @@ def _load_env_key() -> str:
         return CONFIG["hermes_key"]
     env = HERMES_HOME / ".env"
     try:
-        for line in env.read_text().splitlines():
+        for line in env.read_text(encoding="utf-8").splitlines():
             if line.startswith("API_SERVER_KEY="):
                 val = line.split("=", 1)[1].split("#", 1)[0].strip().strip('"').strip("'")
                 if val:

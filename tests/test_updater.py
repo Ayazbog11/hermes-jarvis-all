@@ -19,13 +19,13 @@ def load(tmp_home: Path, monkeypatch):
 
 def fake_install(home: Path, version="1.3.1"):
     (home / "jarvis").mkdir(parents=True, exist_ok=True)
-    (home / "jarvis" / "install.json").write_text(json.dumps({"version": version, "commit": "abc", "repo": "x/y", "channel": "stable", "auto_update": "check"}))
-    (home / "jarvis" / "VERSION").write_text(version)
+    (home / "jarvis" / "install.json").write_text(json.dumps({"version": version, "commit": "abc", "repo": "x/y", "channel": "stable", "auto_update": "check"}), encoding="utf-8")
+    (home / "jarvis" / "VERSION").write_text(version, encoding="utf-8")
     for plug in ("jarvis-core", "jarvis-macos", "jarvis-brain"):
         (home / "plugins" / plug).mkdir(parents=True, exist_ok=True)
-        (home / "plugins" / plug / "__init__.py").write_text(f"# {plug} {version}\n")
-    (home / "SOUL.md").write_text(f"soul {version}")
-    (home / "config.yaml").write_text("model: x\n")
+        (home / "plugins" / plug / "__init__.py").write_text(f"# {plug} {version}\n", encoding="utf-8")
+    (home / "SOUL.md").write_text(f"soul {version}", encoding="utf-8")
+    (home / "config.yaml").write_text("model: x\n", encoding="utf-8")
 
 
 def test_version_compare(tmp_path, monkeypatch):
@@ -58,7 +58,7 @@ def test_check_uses_release_then_falls_back_to_main(tmp_path, monkeypatch):
     monkeypatch.setattr(u.urllib.request, "urlopen", lambda req, timeout=10: R())
     r = u.check()
     assert r["available"] and r["latest"] == "1.4.0" and r["channel"] == "main" and not r["error"]
-    assert json.loads((tmp_path / "jarvis" / "update.json").read_text())["available"]
+    assert json.loads((tmp_path / "jarvis" / "update.json").read_text(encoding="utf-8"))["available"]
     # нет сети → error, но файл не ломается и available не выдумывается
     monkeypatch.setattr(u, "http_json", lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
     r2 = u.check()
@@ -71,13 +71,13 @@ def test_backup_and_rollback(tmp_path, monkeypatch):
     b = u.make_backup("1.3.1")
     assert (b / "plugins" / "jarvis-core" / "__init__.py").exists() and (b / "SOUL.md").exists()
     # «обновление» испортило файлы
-    (tmp_path / "plugins" / "jarvis-core" / "__init__.py").write_text("broken")
-    (tmp_path / "SOUL.md").write_text("broken")
-    (tmp_path / "jarvis" / "install.json").write_text(json.dumps({"version": "9.9.9"}))
+    (tmp_path / "plugins" / "jarvis-core" / "__init__.py").write_text("broken", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("broken", encoding="utf-8")
+    (tmp_path / "jarvis" / "install.json").write_text(json.dumps({"version": "9.9.9"}), encoding="utf-8")
     r = u.rollback()
     assert r["rolled_back"] and r["to"] == "1.3.1"
-    assert "1.3.1" in (tmp_path / "plugins" / "jarvis-core" / "__init__.py").read_text()
-    assert (tmp_path / "SOUL.md").read_text() == "soul 1.3.1"
+    assert "1.3.1" in (tmp_path / "plugins" / "jarvis-core" / "__init__.py").read_text(encoding="utf-8")
+    assert (tmp_path / "SOUL.md").read_text(encoding="utf-8") == "soul 1.3.1"
     assert u.installed()["version"] == "1.3.1"
     # хранится не больше 3 бэкапов
     for i in range(5):
@@ -85,17 +85,19 @@ def test_backup_and_rollback(tmp_path, monkeypatch):
     assert len([p for p in (tmp_path / "jarvis" / "backups").iterdir() if p.is_dir()]) == 3
 
 
-def make_tarball(dst: Path, version: str, install_body: str) -> Path:
+def make_tarball(dst: Path, version: str, install_body: str, ps1_body: str | None = None) -> Path:
     src = dst / "src" / f"repo-{version}"
     (src / "plugins").mkdir(parents=True)
-    (src / "VERSION").write_text(version)
-    (src / "plugins" / "ok.py").write_text("x = 1\n")
+    (src / "VERSION").write_text(version, encoding="utf-8")
+    (src / "plugins" / "ok.py").write_text("x = 1\n", encoding="utf-8")
     body = "#!/usr/bin/env bash\n" + install_body
     # update.py выбирает install.sh/install.linux.sh/install.ps1 по ОС хоста, где гоняются тесты —
-    # кладём один и тот же тестовый скрипт под все три имени, чтобы фикстура не зависела от платформы CI.
-    (src / "install.sh").write_text(body)
-    (src / "install.linux.sh").write_text(body)
-    (src / "install.ps1").write_text(install_body)
+    # кладём тестовый bash-скрипт под install.sh/install.linux.sh, а под install.ps1 — его
+    # PowerShell-эквивалент (ps1_body), т.к. на Windows update.py реально исполняет .ps1 через
+    # powershell.exe, а не bash — синтаксис bash там был бы просто синтаксической ошибкой.
+    (src / "install.sh").write_text(body, encoding="utf-8")
+    (src / "install.linux.sh").write_text(body, encoding="utf-8")
+    (src / "install.ps1").write_text(ps1_body if ps1_body is not None else install_body, encoding="utf-8")
     tar = dst / "src.tar.gz"
     with tarfile.open(tar, "w:gz") as tf:
         tf.add(src, arcname=src.name)
@@ -112,26 +114,39 @@ def test_apply_success_and_failed_install_rolls_back(tmp_path, monkeypatch):
             tf.extractall(workdir, filter="data") if hasattr(tarfile, "data_filter") else tf.extractall(workdir)
         return next(p for p in workdir.iterdir() if p.is_dir())
     monkeypatch.setattr(u, "download_and_extract", fake_download)
-    good = make_tarball(tmp_path / "good", "1.4.0",
-                        'echo "# jarvis-core 1.4.0" > "$HERMES_HOME/plugins/jarvis-core/__init__.py"\n'
-                        'python3 -c "import json,sys;p=\'$HERMES_HOME/jarvis/install.json\';d=json.load(open(p));d[\'version\']=\'1.4.0\';json.dump(d,open(p,\'w\'))"\n')
+    good = make_tarball(
+        tmp_path / "good", "1.4.0",
+        'echo "# jarvis-core 1.4.0" > "$HERMES_HOME/plugins/jarvis-core/__init__.py"\n'
+        'python3 -c "import json,sys;p=\'$HERMES_HOME/jarvis/install.json\';d=json.load(open(p));d[\'version\']=\'1.4.0\';json.dump(d,open(p,\'w\'))"\n',
+        ps1_body=(
+            '"# jarvis-core 1.4.0" | Set-Content "$env:HERMES_HOME/plugins/jarvis-core/__init__.py"\n'
+            '$p = "$env:HERMES_HOME/jarvis/install.json"\n'
+            '$d = Get-Content $p -Raw | ConvertFrom-Json\n'
+            '$d.version = "1.4.0"\n'
+            '$d | ConvertTo-Json | Set-Content $p\n'
+        ),
+    )
     r = u.apply(tarball=str(good), version="1.4.0")
     assert r["updated"] and r["to"] == "1.4.0" and u.installed()["version"] == "1.4.0"
     assert u.installed()["previous_version"] == "1.3.1"
-    assert "1.4.0" in (tmp_path / "plugins" / "jarvis-core" / "__init__.py").read_text()
+    assert "1.4.0" in (tmp_path / "plugins" / "jarvis-core" / "__init__.py").read_text(encoding="utf-8")
 
-    bad = make_tarball(tmp_path / "bad", "1.5.0", 'echo "# jarvis-core BROKEN" > "$HERMES_HOME/plugins/jarvis-core/__init__.py"\nexit 3\n')
+    bad = make_tarball(
+        tmp_path / "bad", "1.5.0",
+        'echo "# jarvis-core BROKEN" > "$HERMES_HOME/plugins/jarvis-core/__init__.py"\nexit 3\n',
+        ps1_body='"# jarvis-core BROKEN" | Set-Content "$env:HERMES_HOME/plugins/jarvis-core/__init__.py"\nexit 3\n',
+    )
     with pytest.raises(RuntimeError, match="откат"):
         u.apply(tarball=str(bad), version="1.5.0")
     assert u.installed()["version"] == "1.4.0"
-    assert "1.4.0" in (tmp_path / "plugins" / "jarvis-core" / "__init__.py").read_text()
+    assert "1.4.0" in (tmp_path / "plugins" / "jarvis-core" / "__init__.py").read_text(encoding="utf-8")
 
 
 def test_smoke_test_rejects_broken_python(tmp_path, monkeypatch):
     u = load(tmp_path, monkeypatch)
     src = tmp_path / "s"; src.mkdir()
-    (src / "VERSION").write_text("1.0.0"); (src / "install.sh").write_text("true\n")
-    (src / "bad.py").write_text("def (:\n")
+    (src / "VERSION").write_text("1.0.0", encoding="utf-8"); (src / "install.sh").write_text("true\n", encoding="utf-8")
+    (src / "bad.py").write_text("def (:\n", encoding="utf-8")
     with pytest.raises(Exception):
         u.smoke_test(src)
 
@@ -163,8 +178,8 @@ def test_jarvis_update_tool(tmp_path, monkeypatch):
     r = json.loads(core.tool_jarvis_update({"action": "apply"}))
     assert r["success"] is False and "updater не установлен" in r["error"]
     fake_install(tmp_path, "1.3.1")
-    (tmp_path / "jarvis" / "update.py").write_text(Path("scripts/update.py").read_text())
-    (tmp_path / "jarvis" / "update.json").write_text(json.dumps({"available": True, "latest": "1.4.0", "checked_at": "2026-09-10T10:00:00"}))
+    (tmp_path / "jarvis" / "update.py").write_text(Path("scripts/update.py").read_text(encoding="utf-8"))
+    (tmp_path / "jarvis" / "update.json").write_text(json.dumps({"available": True, "latest": "1.4.0", "checked_at": "2026-09-10T10:00:00"}), encoding="utf-8")
     r = json.loads(core.tool_jarvis_update({"action": "apply"}))
     assert r["needs_confirmation"] and r["success"] is False   # без confirmed не ставим
     assert "Доступно обновление JARVIS 1.4.0" in core.build_context()

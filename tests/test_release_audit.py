@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import find_bash
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -55,7 +57,7 @@ def test_hud_server_paths_from_hermes_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hh"))
     monkeypatch.delenv("JARVIS_BRAIN_DB", raising=False)
     (tmp_path / "hh").mkdir()
-    (tmp_path / "hh" / ".env").write_text("API_SERVER_KEY=secret123 # comment\n")
+    (tmp_path / "hh" / ".env").write_text("API_SERVER_KEY=secret123 # comment\n", encoding="utf-8")
     sys.path.insert(0, str(ROOT / "hud"))
     try:
         srv = _load(ROOT / "hud" / "server.py", "audit_hud_server")
@@ -70,7 +72,7 @@ def test_no_hardcoded_hermes_home_in_code():
     """В коде (не в документации) путь ~/.hermes допустим только как значение по умолчанию рядом с HERMES_HOME."""
     offenders = []
     for p in list(ROOT.glob("plugins/**/*.py")) + list(ROOT.glob("hud/*.py")) + list(ROOT.glob("scripts/*.py")) + list(ROOT.glob("hooks/**/*.py")):
-        for i, line in enumerate(p.read_text().splitlines(), 1):
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             if "~/.hermes" in line and "HERMES_HOME" not in line and not line.lstrip().startswith("#"):
                 offenders.append(f"{p.relative_to(ROOT)}:{i}: {line.strip()}")
     assert not offenders, "\n".join(offenders)
@@ -103,7 +105,9 @@ def test_hud_rejects_huge_body(tmp_path, monkeypatch):
 
 def _jarvis(*args, env=None):
     e = {**os.environ, **(env or {})}
-    return subprocess.run(["bash", str(ROOT / "bin" / "jarvis"), *args], capture_output=True, text=True, env=e)
+    return subprocess.run(
+        [find_bash(), str(ROOT / "bin" / "jarvis"), *args], capture_output=True, text=True, env=e
+    )
 
 
 def test_cli_help_and_version_work_without_install(tmp_path):
@@ -159,18 +163,18 @@ def test_restart_services_survives_missing_binaries(tmp_path, monkeypatch):
 def test_plugin_yaml_defaults_do_not_pin_hermes_home():
     import yaml
     for name in ("jarvis-core", "jarvis-macos", "jarvis-brain"):
-        y = yaml.safe_load((ROOT / "plugins" / name / "plugin.yaml").read_text())
+        y = yaml.safe_load((ROOT / "plugins" / name / "plugin.yaml").read_text(encoding="utf-8"))
         for key, spec in (y.get("config_schema") or {}).items():
             assert "~/.hermes" not in str(spec.get("default", "")), f"{name}.{key} зашивает ~/.hermes"
 
 
 def test_install_json_written_by_installer_snippet(tmp_path):
     """Фрагмент install.sh, пишущий install.json, сохраняет канал/режим и добавляет версию."""
-    text = (ROOT / "install.sh").read_text()
+    text = (ROOT / "install.sh").read_text(encoding="utf-8")
     start = text.index("<<'PY'") + len("<<'PY'\n")
     snippet = text[start:text.index("\nPY\n", start)]
     p = tmp_path / "install.json"
-    p.write_text(json.dumps({"channel": "main", "auto_update": "auto", "commit": "old"}))
+    p.write_text(json.dumps({"channel": "main", "auto_update": "auto", "commit": "old"}), encoding="utf-8")
     subprocess.run([sys.executable, "-", str(p), "1.7.0", "", "x/y", "", ""], input=snippet, text=True, check=True)
-    d = json.loads(p.read_text())
+    d = json.loads(p.read_text(encoding="utf-8"))
     assert d["version"] == "1.7.0" and d["channel"] == "main" and d["auto_update"] == "auto" and d["commit"] == "old"

@@ -58,14 +58,14 @@ class Triggers:
     # ── состояние ──
     def _load(self) -> dict:
         try:
-            return json.loads(self.state_file.read_text())
+            return json.loads(self.state_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {"last_llm": 0, "last_disk_alert": 0, "brief_day": ""}  # seen_inbox появится после первого прохода
 
     def _save(self) -> None:
         try:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            self.state_file.write_text(json.dumps(self.st, ensure_ascii=False))
+            self.state_file.write_text(json.dumps(self.st, ensure_ascii=False), encoding="utf-8")
         except OSError:
             pass
 

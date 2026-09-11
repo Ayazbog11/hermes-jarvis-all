@@ -19,7 +19,7 @@ IS_LINUX = platform.system() == "Linux"
 # ─────────────────────────── манифест и схемы ───────────────────────────────
 
 def test_manifest_valid():
-    m = yaml.safe_load((PLUGINS / "jarvis-linux" / "plugin.yaml").read_text())
+    m = yaml.safe_load((PLUGINS / "jarvis-linux" / "plugin.yaml").read_text(encoding="utf-8"))
     assert m["name"] == "jarvis-linux"
     assert "version" in m and "description" in m
     assert isinstance(m.get("provides_tools", []), list)
@@ -27,7 +27,7 @@ def test_manifest_valid():
 
 def test_manifest_lists_all_tools():
     lin = load_plugin("jarvis-linux")
-    m = yaml.safe_load((PLUGINS / "jarvis-linux" / "plugin.yaml").read_text())
+    m = yaml.safe_load((PLUGINS / "jarvis-linux" / "plugin.yaml").read_text(encoding="utf-8"))
     declared = set(m["provides_tools"])
     actual = {s["name"] for s in lin.schemas.ALL_SCHEMAS}
     assert declared == actual, f"manifest≠schemas: {declared ^ actual}"
@@ -95,8 +95,8 @@ def test_resolve_target():
     r = lin.linux.resolve_target
     assert r("youtube.com") == "https://youtube.com"
     assert r("https://a.b/c") == "https://a.b/c"
-    assert r("Загрузки").endswith("/Downloads")
-    resolved = r("~/x.txt")
+    assert r("Загрузки").replace("\\", "/").endswith("/Downloads")
+    resolved = r("~/x.txt").replace("\\", "/")
     assert resolved.endswith("/x.txt") and not resolved.startswith("~")
 
 
@@ -120,7 +120,7 @@ def test_keystroke_rejects_unknown_modifiers():
 
 
 def test_linux_manifest_declares_no_other_os_plugin_dependency():
-    core_manifest = yaml.safe_load((PLUGINS / "jarvis-core" / "plugin.yaml").read_text())
+    core_manifest = yaml.safe_load((PLUGINS / "jarvis-core" / "plugin.yaml").read_text(encoding="utf-8"))
     requires = core_manifest.get("requires_plugins", [])
     assert "jarvis-macos" not in requires and "jarvis-windows" not in requires and "jarvis-linux" not in requires
 
@@ -131,7 +131,7 @@ def test_file_manage_safe_ops_platform_independent(tmp_path, monkeypatch):
     monkeypatch.setattr(lin.tools.lx, "IS_LINUX", True)
     monkeypatch.setattr(lin.linux, "IS_LINUX", True)
     f = tmp_path / "a.txt"
-    f.write_text("x")
+    f.write_text("x", encoding="utf-8")
     out = json.loads(lin.tools.linux_file_manage({"action": "rename", "path": str(f), "new_name": "b.txt"}))
     assert out["success"] and (tmp_path / "b.txt").exists()
     out = json.loads(lin.tools.linux_file_manage({"action": "mkdir", "path": str(tmp_path / "sub")}))
@@ -151,7 +151,11 @@ def test_selftest_classifier_linux_branch(monkeypatch):
     spec = importlib.util.spec_from_file_location("linuxselftest", "scripts/selftest.py")
     st = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(st)
+    # classify() проверяет ветки по приоритету if IS_WINDOWS / elif IS_LINUX — на реальном
+    # Windows-раннере IS_WINDOWS уже True, поэтому форсируем обе переменные, а не только IS_LINUX,
+    # иначе тест «форсирующий ветку Linux» на Windows CI тихо проверял бы ветку Windows.
     monkeypatch.setattr(st, "IS_LINUX", True)
+    monkeypatch.setattr(st, "IS_WINDOWS", False)
     assert st.classify({"success": True}) == ("ok", "")
     s, note = st.classify({"success": False, "error": "Нужен xdotool (X11) для отправки сочетаний клавиш."})
     assert s == "missing"

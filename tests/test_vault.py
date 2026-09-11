@@ -36,11 +36,11 @@ def _seed(root):
         "# Договор с Acme\n\nСрок действия до 31 декабря 2026. Оплата 5000 CHF ежемесячно.\n"
         "Контактное лицо — Анна Мюллер.\n", encoding="utf-8")
     (root / "notes.txt").write_text("Идеи на отпуск: Лиссабон в октябре, Порту, серфинг в Эрисейре.\n", encoding="utf-8")
-    (root / ".env").write_text("OPENAI_API_KEY=sk-secretsecretsecretsecret1234567890\n")
-    (root / "id_rsa").write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nxxx\n-----END OPENSSH PRIVATE KEY-----\n")
+    (root / ".env").write_text("OPENAI_API_KEY=sk-secretsecretsecretsecret1234567890\n", encoding="utf-8")
+    (root / "id_rsa").write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nxxx\n-----END OPENSSH PRIVATE KEY-----\n", encoding="utf-8")
     (root / "photo.jpg").write_bytes(b"\xff\xd8\xff\x00" * 100)
     (root / "node_modules").mkdir()
-    (root / "node_modules" / "index.js").write_text("module.exports = 'должно быть пропущено';")
+    (root / "node_modules" / "index.js").write_text("module.exports = 'должно быть пропущено';", encoding="utf-8")
 
 
 def test_layout_and_index(brain, tmp_path):
@@ -100,10 +100,10 @@ def test_empty_vault_hint(brain):
 def test_add_project_symlink_and_remove(brain, tmp_path):
     proj = tmp_path / "Projects" / "shop"
     (proj / "src").mkdir(parents=True)
-    (proj / "src" / "auth.py").write_text("def login(user, password):\n    # проверка пароля через bcrypt\n    return True\n")
+    (proj / "src" / "auth.py").write_text("def login(user, password):\n    # проверка пароля через bcrypt\n    return True\n", encoding="utf-8")
     (proj / ".git").mkdir()
-    (proj / ".git" / "config").write_text("[core]")
-    (proj / "README.md").write_text("# Shop\nИнтернет-магазин на FastAPI.")
+    (proj / ".git" / "config").write_text("[core]", encoding="utf-8")
+    (proj / "README.md").write_text("# Shop\nИнтернет-магазин на FastAPI.", encoding="utf-8")
     res = _j(brain.tool_vault_manage({"action": "add", "path": str(proj)}))
     assert res["success"] and res["name"] == "shop" and res["indexed"] >= 2
     link = tmp_path / "JARVIS" / "projects" / "shop"
@@ -130,10 +130,10 @@ def test_reindex_tracks_changes_and_deletions(brain, tmp_path):
     v.ensure_layout()
     root = tmp_path / "JARVIS"
     f = root / "todo.md"
-    f.write_text("купить молоко")
+    f.write_text("купить молоко", encoding="utf-8")
     v.reindex()
     assert v.search("молоко")
-    f.write_text("купить хлеб")
+    f.write_text("купить хлеб", encoding="utf-8")
     os.utime(f, (f.stat().st_atime, f.stat().st_mtime + 5))
     st = v.reindex()
     assert st["indexed"] == 1 and v.search("хлеб") and not v.search("молоко")
@@ -145,7 +145,7 @@ def test_reindex_tracks_changes_and_deletions(brain, tmp_path):
 def test_secrets_redacted_inside_text(brain, tmp_path):
     v = brain.vault()
     v.ensure_layout()
-    (tmp_path / "JARVIS" / "setup.md").write_text("Деплой: export TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789 и запустить make deploy")
+    (tmp_path / "JARVIS" / "setup.md").write_text("Деплой: export TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789 и запустить make deploy", encoding="utf-8")
     v.reindex()
     hits = v.search("деплой make")
     assert hits and "ghp_abc" not in hits[0]["snippet"]
@@ -167,7 +167,7 @@ def test_office_zip_extraction(brain, tmp_path):
 def test_context_injection_includes_vault(brain, tmp_path):
     v = brain.vault()
     v.ensure_layout()
-    (tmp_path / "JARVIS" / "trip.md").write_text("Бронь отеля в Лиссабоне: Hotel Avenida, 12–19 октября, номер брони 88213.")
+    (tmp_path / "JARVIS" / "trip.md").write_text("Бронь отеля в Лиссабоне: Hotel Avenida, 12–19 октября, номер брони 88213.", encoding="utf-8")
     v.reindex()
     ctx = FakeCtx()
     brain.register(ctx)
@@ -195,7 +195,7 @@ def test_cli_entrypoint(brain, tmp_path, monkeypatch):
     root = tmp_path / "JARVIS"
     v = brain.vault()
     v.ensure_layout()
-    (root / "a.md").write_text("Пароль от wifi дома: спросить у соседа")  # это не секрет по паттернам — просто текст
+    (root / "a.md").write_text("Пароль от wifi дома: спросить у соседа", encoding="utf-8")  # это не секрет по паттернам — просто текст
     env = {**os.environ, "JARVIS_VAULT_DIR": str(root), "JARVIS_BRAIN_DIR": str(tmp_path / "db")}
     script = Path(__file__).resolve().parents[1] / "plugins" / "jarvis-brain" / "vault.py"
     brain.brain().close(); brain._brain = None; brain._vault = None
@@ -220,7 +220,7 @@ def test_write_move_trash_inside_only(brain, tmp_path, monkeypatch):
     assert any("заметка.md" in h["rel"] for h in v.search("совещание Atlas пятницу"))
     # append
     v.write("inbox/заметка.md", "Дополнение: пригласить Анну", mode="append")
-    assert "Дополнение" in (root / "inbox" / "заметка.md").read_text()
+    assert "Дополнение" in (root / "inbox" / "заметка.md").read_text(encoding="utf-8")
     # move в новую папку + индекс переезжает
     v.mkdir("inbox/встречи")
     m = v.move("inbox/заметка.md", "inbox/встречи")
@@ -246,7 +246,7 @@ def test_write_move_trash_inside_only(brain, tmp_path, monkeypatch):
 
 def test_pending_summaries_and_mark(brain, tmp_path):
     v, root = _prep(brain, tmp_path)
-    (root / "inbox" / "договор.md").write_text("Договор с Acme до 31.12.2026, сумма 12 000 CHF")
+    (root / "inbox" / "договор.md").write_text("Договор с Acme до 31.12.2026, сумма 12 000 CHF", encoding="utf-8")
     v.reindex()
     pend = v.pending_summaries()
     names = [p["name"] for p in pend]
@@ -266,7 +266,7 @@ def test_pending_summaries_and_mark(brain, tmp_path):
 
 def test_connect_obsidian_lookup(brain, tmp_path, monkeypatch):
     v, root = _prep(brain, tmp_path)
-    obs = tmp_path / "ObsVault"; obs.mkdir(); (obs / "note.md").write_text("Идея: сделать JARVIS ещё умнее")
+    obs = tmp_path / "ObsVault"; obs.mkdir(); (obs / "note.md").write_text("Идея: сделать JARVIS ещё умнее", encoding="utf-8")
     monkeypatch.setattr(v, "_find_obsidian", staticmethod(lambda: str(obs)))
     res = v.connect("notes-obsidian")
     assert res["name"] == "Obsidian" and (root / "projects" / "Obsidian").is_symlink()

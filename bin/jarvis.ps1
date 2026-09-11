@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   jarvis.ps1 — единая точка входа J.A.R.V.I.S. на Windows (обёртка над hermes + HUD).
   Зеркало bin/jarvis (bash) для Windows. install.ps1 подставляет __HERMES_HOME__ и __PYTHON__

@@ -25,6 +25,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+# На Windows stdout/stderr при перенаправлении в файл/пайп (не TTY) используют системную
+# кодировку консоли (обычно cp1252), а не UTF-8 — любой print() с кириллицей тогда падает
+# с UnicodeEncodeError вместо того, чтобы просто напечататься. На Linux/macOS это не нужно
+# (там локаль почти всегда UTF-8), поэтому ограничиваемся Windows.
+if sys.platform == "win32":  # pragma: no cover — покрыто CI на windows-latest
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
 CACHE_DIR = HERMES_HOME / "cache" / "tts"
 MAX_CHARS = 1500
@@ -37,7 +48,7 @@ def _config_voice() -> tuple[str, float]:
     """tts.edge.voice и tts.speed из config.yaml Hermes (без PyYAML — простой построчный парсер)."""
     voice, speed, section = DEFAULT_VOICE, 1.0, []
     try:
-        for raw in (HERMES_HOME / "config.yaml").read_text().splitlines():
+        for raw in (HERMES_HOME / "config.yaml").read_text(encoding="utf-8").splitlines():
             if not raw.strip() or raw.lstrip().startswith("#"):
                 continue
             indent = len(raw) - len(raw.lstrip())
@@ -185,7 +196,12 @@ def synthesize(text: str) -> tuple[bytes, str] | None:
     if cached.exists() and cached.stat().st_size > 0:
         os.utime(cached)
         return cached.read_bytes(), mime
-    tmp = Path(tempfile.mkstemp(suffix=f".{ext}", dir=CACHE_DIR)[1])
+    # mkstemp() возвращает открытый файловый дескриптор — на Linux/macOS файл с открытым хендлом
+    # спокойно переименовывается/удаляется, но на Windows это приводит к PermissionError
+    # (WinError 32, «файл занят другим процессом») при tmp.replace(cached) ниже. Закрываем сразу.
+    _tmp_fd, _tmp_name = tempfile.mkstemp(suffix=f".{ext}", dir=CACHE_DIR)
+    os.close(_tmp_fd)
+    tmp = Path(_tmp_name)
     ok = False
     if eng == "edge-tts":
         ok = _edge_py(text, voice, speed, tmp)

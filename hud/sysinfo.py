@@ -51,7 +51,7 @@ def _powershell(script: str, timeout: float = 10) -> str:
 
 def _read_json(path: Path, default):
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return default
 
@@ -59,7 +59,7 @@ def _read_json(path: Path, default):
 def _write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
 
 
@@ -84,8 +84,8 @@ def battery() -> dict | None:
         # sysfs fallback (нет upower — почти всегда есть на ноутбуках с ядром Linux)
         for bat in sorted(Path("/sys/class/power_supply").glob("BAT*")) if Path("/sys/class/power_supply").exists() else []:
             try:
-                pct = int((bat / "capacity").read_text().strip())
-                status = (bat / "status").read_text().strip().lower()
+                pct = int((bat / "capacity").read_text(encoding="utf-8").strip())
+                status = (bat / "status").read_text(encoding="utf-8").strip().lower()
                 return {"percent": pct, "charging": status == "charging", "plugged": status in ("charging", "full"), "remaining": ""}
             except (OSError, ValueError):
                 continue
@@ -298,7 +298,7 @@ def version_info() -> dict:
 def hermes_model() -> str:
     """model.default из $HERMES_HOME/config.yaml (без PyYAML — простой разбор)."""
     try:
-        lines = CONFIG_YAML.read_text().splitlines()
+        lines = CONFIG_YAML.read_text(encoding="utf-8").splitlines()
     except OSError:
         return ""
     in_model = False

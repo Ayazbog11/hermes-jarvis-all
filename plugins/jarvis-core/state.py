@@ -46,14 +46,14 @@ def _path() -> Path:
 
 def _load() -> dict:
     try:
-        return json.loads(_path().read_text())
+        return json.loads(_path().read_text(encoding="utf-8"))
     except Exception:
         return {"mode": "normal", "timers": []}
 
 
 def _save(data: dict) -> None:
     tmp = _path().with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(_path())
 
 

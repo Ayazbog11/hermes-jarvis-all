@@ -63,7 +63,7 @@ class FakeHermes(BaseHTTPRequestHandler):
 def stack(tmp_path_factory):
     home = tmp_path_factory.mktemp("hermes_home")
     api_port, hud_port = _free_port(), _free_port()
-    (home / ".env").write_text("API_SERVER_KEY=test-key\n")
+    (home / ".env").write_text("API_SERVER_KEY=test-key\n", encoding="utf-8")
     api = ThreadingHTTPServer(("127.0.0.1", api_port), FakeHermes); api.daemon_threads = True
     threading.Thread(target=api.serve_forever, daemon=True).start()
     env = {**os.environ, "HERMES_HOME": str(home), "JARVIS_HERMES_URL": f"http://127.0.0.1:{api_port}", "JARVIS_STATE_DIR": str(home)}

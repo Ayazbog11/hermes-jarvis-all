@@ -759,13 +759,13 @@ def mac_focus(args: dict) -> str:
     base = Path.home() / "Library" / "DoNotDisturb" / "DB"
     if action == "get":
         try:
-            assertions = json.loads((base / "Assertions.json").read_text())
+            assertions = json.loads((base / "Assertions.json").read_text(encoding="utf-8"))
             records = (assertions.get("data") or [{}])[0].get("storeAssertionRecords") or []
             if not records:
                 return json_ok(focus="", active=False)
             rec = max(records, key=lambda r: r.get("assertionStartDateTimestamp", 0))
             mode_id = rec["assertionDetails"]["assertionDetailsModeIdentifier"]
-            modes = (json.loads((base / "ModeConfigurations.json").read_text()).get("data") or [{}])[0].get("modeConfigurations") or {}
+            modes = (json.loads((base / "ModeConfigurations.json").read_text(encoding="utf-8")).get("data") or [{}])[0].get("modeConfigurations") or {}
             name = modes.get(mode_id, {}).get("mode", {}).get("name") or mode_id.rsplit(".", 1)[-1]
             return json_ok(focus=name, active=True)
         except (OSError, ValueError, KeyError) as e:

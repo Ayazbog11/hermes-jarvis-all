@@ -27,7 +27,7 @@ def test_no_hermes_is_single_fail(monkeypatch, tmp_path, capsys):
 
 def test_env_fix_writes_keys(monkeypatch, tmp_path):
     d = load(monkeypatch, tmp_path)
-    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=x\n")
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=x\n", encoding="utf-8")
     c = d.check_env_api(fix=False)
     assert c.status == "fail" and "API_SERVER_KEY" in c.note
     c = d.check_env_api(fix=True)
@@ -40,8 +40,8 @@ def test_env_fix_writes_keys(monkeypatch, tmp_path):
 def test_version_check_reads_update_json(monkeypatch, tmp_path):
     d = load(monkeypatch, tmp_path)
     (tmp_path / "jarvis").mkdir()
-    (tmp_path / "jarvis" / "install.json").write_text(json.dumps({"version": "1.8.0", "channel": "stable"}))
+    (tmp_path / "jarvis" / "install.json").write_text(json.dumps({"version": "1.8.0", "channel": "stable"}), encoding="utf-8")
     assert d.check_version(False).status == "ok"
-    (tmp_path / "jarvis" / "update.json").write_text(json.dumps({"available": True, "latest": "1.9.0"}))
+    (tmp_path / "jarvis" / "update.json").write_text(json.dumps({"available": True, "latest": "1.9.0"}), encoding="utf-8")
     c = d.check_version(False)
     assert c.status == "warn" and "1.9.0" in c.note and c.fix_hint == "jarvis update"

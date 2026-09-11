@@ -37,6 +37,17 @@ except ImportError:  # запуск как скрипт: python3 vault.py …
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from db import Brain, redact  # type: ignore
 
+# На Windows stdout/stderr при перенаправлении в файл/пайп (не TTY) используют системную
+# кодировку консоли (обычно cp1252), а не UTF-8 — любой print() с кириллицей тогда падает
+# с UnicodeEncodeError вместо того, чтобы просто напечататься. На Linux/macOS это не нужно
+# (там локаль почти всегда UTF-8), поэтому ограничиваемся Windows.
+if sys.platform == "win32":  # pragma: no cover — покрыто CI на windows-latest
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
 TEXT_EXT = {
     ".md", ".markdown", ".txt", ".text", ".rst", ".org", ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml", ".toml",
     ".ini", ".cfg", ".conf", ".xml", ".html", ".htm", ".css", ".scss", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".py",
@@ -612,7 +623,7 @@ class Vault:
     def _find_obsidian() -> str | None:
         cfg = Path("~/Library/Application Support/obsidian/obsidian.json").expanduser()
         try:
-            data = json.loads(cfg.read_text())
+            data = json.loads(cfg.read_text(encoding="utf-8"))
             vaults = data.get("vaults") or {}
             best = max(vaults.values(), key=lambda v: v.get("ts", 0)) if vaults else None
             return best["path"] if best and Path(best["path"]).is_dir() else None

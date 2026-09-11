@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -15,6 +17,33 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGINS = ROOT / "plugins"
+
+
+def find_bash() -> str:
+    """Путь к настоящему bash для запуска shell-скриптов в тестах.
+
+    На windows-latest раннерах GitHub Actions в PATH одновременно есть
+    Git Bash (C:\\Program Files\\Git\\bin\\bash.exe) и системная заглушка
+    C:\\Windows\\System32\\bash.exe (лаунчер WSL) — если WSL-дистрибутив не
+    установлен, эта заглушка печатает в stdout сообщение в UTF-16
+    ("...run wsl --install to install...") и завершается с ошибкой вместо
+    реального разбора shell-скрипта. shutil.which() может найти именно её
+    первой. Поэтому явно предпочитаем Git Bash на Windows.
+    """
+    candidates = []
+    if os.name == "nt":
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        candidates += [
+            str(Path(program_files) / "Git" / "bin" / "bash.exe"),
+            str(Path(program_files_x86) / "Git" / "bin" / "bash.exe"),
+            str(Path(program_files) / "Git" / "usr" / "bin" / "bash.exe"),
+        ]
+    for c in candidates:
+        if Path(c).is_file():
+            return c
+    found = shutil.which("bash")
+    return found or "bash"
 
 
 def load_plugin(name: str):

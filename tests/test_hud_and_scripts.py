@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from conftest import find_bash
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "hud"))
 import server as hud  # noqa: E402
@@ -117,16 +119,16 @@ def test_merge_config_preserves_user_values(tmp_path):
         "plugins": {"enabled": ["jarvis-core", "jarvis-macos"]},
         "tts": {"provider": "edge", "edge": {"voice": "ru-RU-DmitryNeural"}},
         "toolsets": {"hermes-cli": ["web", "jarvis_macos"]},
-    }))
+    }), encoding="utf-8")
     tgt.write_text(yaml.safe_dump({
         "model": "anthropic/claude-sonnet-4",
         "plugins": {"enabled": ["my-plugin"]},
         "tts": {"provider": "elevenlabs"},
         "toolsets": {"hermes-cli": ["terminal", "web"]},
-    }))
+    }), encoding="utf-8")
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "merge_config.py"), str(frag), str(tgt)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    out = yaml.safe_load(tgt.read_text())
+    out = yaml.safe_load(tgt.read_text(encoding="utf-8"))
     assert out["model"] == "anthropic/claude-sonnet-4"                 # не тронуто
     assert out["plugins"]["enabled"] == ["my-plugin", "jarvis-core", "jarvis-macos"]  # объединено
     assert out["tts"]["provider"] == "elevenlabs"                       # пользователь победил
@@ -135,15 +137,16 @@ def test_merge_config_preserves_user_values(tmp_path):
 
 
 def test_jarvis_config_fragment_is_valid_yaml():
-    cfg = yaml.safe_load((ROOT / "config" / "config.jarvis.yaml").read_text())
+    cfg = yaml.safe_load((ROOT / "config" / "config.jarvis.yaml").read_text(encoding="utf-8"))
     assert set(cfg["plugins"]["enabled"]) == {"jarvis-core", "jarvis-macos", "jarvis-brain"}
     assert cfg["wake_word"]["openwakeword"]["model"] == "hey_jarvis"
     assert cfg["stt"]["provider"] == "local"
 
 
 def test_shell_scripts_syntax():
+    bash = find_bash()
     for script in (ROOT / "install.sh", ROOT / "bin" / "jarvis", ROOT / "scripts" / "setup_cron.sh"):
-        r = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+        r = subprocess.run([bash, "-n", str(script)], capture_output=True, text=True)
         assert r.returncode == 0, f"{script}: {r.stderr}"
 
 
@@ -151,7 +154,7 @@ def test_launchd_plists_are_valid_xml():
     import xml.etree.ElementTree as ET
 
     for p in (ROOT / "config" / "launchd").glob("*.plist"):
-        ET.fromstring(p.read_text())
+        ET.fromstring(p.read_text(encoding="utf-8"))
 
 
 def test_post_rejects_cross_origin_and_non_json(hud_server):

@@ -129,7 +129,7 @@ def resolve_target(target: str) -> str:
         return str(Path(FOLDER_ALIASES[low]).expanduser())
     if "://" in t or low.startswith("mailto:"):
         return t
-    if "." in t and " " not in t and "/" not in t and not t.startswith("~"):
+    if "." in t and " " not in t and "/" not in t and "\\" not in t and not t.startswith("~"):
         return "https://" + t
     return str(Path(t).expanduser())
 

@@ -418,8 +418,8 @@ def linux_battery(args: dict) -> str:
     base = Path("/sys/class/power_supply")
     for entry in base.glob("BAT*"):
         try:
-            pct = int((entry / "capacity").read_text().strip())
-            status = (entry / "status").read_text().strip().lower()
+            pct = int((entry / "capacity").read_text(encoding="utf-8").strip())
+            status = (entry / "status").read_text(encoding="utf-8").strip().lower()
             return json_ok(percent=pct, charging=status == "charging", on_ac=status in ("charging", "full"), raw=status)
         except (OSError, ValueError):
             continue

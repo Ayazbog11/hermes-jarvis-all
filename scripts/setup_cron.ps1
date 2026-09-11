@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   Создаёт стандартные фоновые задачи JARVIS через встроенный cron Hermes.
   Зеркало scripts/setup_cron.sh — сам cron кроссплатформенный (это фича Hermes,

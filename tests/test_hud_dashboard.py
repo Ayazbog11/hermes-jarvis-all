@@ -57,7 +57,7 @@ def test_timers_shared_state_file(state_dir):
     """HUD и плагин jarvis-core пишут в один state.json с одинаковой схемой."""
     target = dt.datetime.now() + dt.timedelta(minutes=5)
     sysinfo.add_timer("чай", target)
-    raw = json.loads((state_dir / "state.json").read_text())
+    raw = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
     assert raw["timers"] == [{"label": "чай", "target": target.isoformat()}]
     alive = sysinfo.timers()
     assert alive[0]["label"] == "чай" and 290 <= alive[0]["seconds"] <= 300
@@ -91,7 +91,7 @@ def test_timer_watcher_fires_once(state_dir):
     sysinfo.add_timer("past", dt.datetime.now() - dt.timedelta(seconds=10))
     w = sysinfo.TimerWatcher(fired.append)
     # прогоняем один цикл руками, без потока
-    for t in json.loads((state_dir / "state.json").read_text())["timers"]:
+    for t in json.loads((state_dir / "state.json").read_text(encoding="utf-8"))["timers"]:
         if sysinfo.cancel_timer(t["label"], t["target"]):
             w.on_fire(t["label"])
     assert fired == ["past"] and sysinfo.timers() == []
@@ -124,10 +124,10 @@ def test_panel_clear_drops_replay():
 
 def test_hermes_model_parser(tmp_path, monkeypatch):
     cfg = tmp_path / "config.yaml"
-    cfg.write_text("plugins:\n  enabled: []\nmodel:\n  default: anthropic/claude-sonnet-4.5  # комментарий\n  fallback: x\n")
+    cfg.write_text("plugins:\n  enabled: []\nmodel:\n  default: anthropic/claude-sonnet-4.5  # комментарий\n  fallback: x\n", encoding="utf-8")
     monkeypatch.setattr(sysinfo, "CONFIG_YAML", cfg)
     assert sysinfo.hermes_model() == "anthropic/claude-sonnet-4.5"
-    cfg.write_text('model: "gpt-4o"\n')
+    cfg.write_text('model: "gpt-4o"\n', encoding="utf-8")
     assert sysinfo.hermes_model() == "gpt-4o"
 
 

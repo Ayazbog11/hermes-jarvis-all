@@ -277,11 +277,11 @@ def update_status() -> dict:
     """Краткий статус обновлений из файлов updater'а (без сети)."""
     home = _updater_path().parent
     try:
-        inst = json.loads((home / "install.json").read_text())
+        inst = json.loads((home / "install.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         inst = {}
     try:
-        upd = json.loads((home / "update.json").read_text())
+        upd = json.loads((home / "update.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         upd = {}
     return {"version": inst.get("version", "?"), "channel": inst.get("channel", "stable"),
