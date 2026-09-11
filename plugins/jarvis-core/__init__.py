@@ -46,7 +46,7 @@ _hud = HudClient()
 _cfg = {"user_name": "сэр", "city": "Zürich", "inject_context": True,
         "watchdog": True, "battery_threshold": 20, "watch_calendar": False, "follow_focus": True,
         "triggers": True, "trigger_llm": True, "disk_min_gb": 20, "idle_return_min": 90, "screen_context": True,
-        "remote_alert_target": ""}
+        "remote_alert_target": "", "telegram_watch": False, "telegram_check_min": 10}
 
 
 def _remote_alert(title: str, text: str) -> None:
@@ -684,7 +684,8 @@ BRIEF_PROMPT = (
 def register(ctx) -> None:
     # настройки
     for key in ("hud_url", "user_name", "city", "inject_context", "watchdog", "battery_threshold", "watch_calendar", "follow_focus",
-                "triggers", "trigger_llm", "disk_min_gb", "idle_return_min", "screen_context", "remote_alert_target"):
+                "triggers", "trigger_llm", "disk_min_gb", "idle_return_min", "screen_context", "remote_alert_target",
+                "telegram_watch", "telegram_check_min"):
         try:
             val = ctx.get_config(key, default=None)
         except Exception:
@@ -775,7 +776,10 @@ def register(ctx) -> None:
         if _cfg.get("triggers", True):
             trig = Triggers(state_file=state._path().parent / "triggers.json",
                             disk_min_gb=int(_cfg.get("disk_min_gb") or 20), idle_min=int(_cfg.get("idle_return_min") or 90),
-                            llm=bool(_cfg.get("trigger_llm", True)), notify=Watchdog.notify, emit=_hud.emit, get_mode=state.get_mode)
+                            llm=bool(_cfg.get("trigger_llm", True)), notify=Watchdog.notify, emit=_hud.emit, get_mode=state.get_mode,
+                            telegram_watch=bool(_cfg.get("telegram_watch", False)),
+                            telegram_check_min=int(_cfg.get("telegram_check_min") or 10),
+                            telegram_unread_fn=telegram_userbot.unread_summary)
         _watchdog = Watchdog(battery_threshold=int(_cfg.get("battery_threshold") or 20),
                              watch_calendar=bool(_cfg.get("watch_calendar")),
                              follow_focus=bool(_cfg.get("follow_focus", True)),

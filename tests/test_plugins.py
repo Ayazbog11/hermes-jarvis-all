@@ -409,6 +409,50 @@ def test_triggers_inbox_return_and_quiet(tmp_path, monkeypatch):
     assert tr2.tick(now=morning + 9000, idle=0) == []
 
 
+def test_triggers_telegram_disabled_by_default(tmp_path):
+    """telegram_watch=false (по умолчанию) — detect_telegram никогда не зовёт telegram_unread_fn."""
+    core = load_plugin("jarvis-core")
+    calls = []
+    tr = core.Triggers(state_file=tmp_path / "t.json", notify=lambda t, x: None, emit=lambda e, d: None,
+                       telegram_watch=False, telegram_unread_fn=lambda: calls.append(1) or {"success": True, "total_unread": 5})
+    assert tr.detect_telegram(now=1000.0) == []
+    assert calls == []
+
+
+def test_triggers_telegram_unread_growth_notifies_without_llm(tmp_path):
+    core = load_plugin("jarvis-core")
+    responses = [
+        {"success": True, "total_unread": 0, "chats_with_unread": 0},
+        {"success": True, "total_unread": 3, "chats_with_unread": 1},
+        {"success": True, "total_unread": 3, "chats_with_unread": 1},  # без изменений — молчим
+        {"success": True, "total_unread": 5, "chats_with_unread": 2},
+    ]
+    calls_iter = iter(responses)
+    notes = []
+    tr = core.Triggers(state_file=tmp_path / "t.json", notify=lambda t, x: notes.append(x), emit=lambda e, d: None,
+                       telegram_watch=True, telegram_check_min=1, telegram_unread_fn=lambda: next(calls_iter))
+    assert tr.detect_telegram(now=1000.0) == []  # 0 -> 0
+    # check-интервал (60с по минимуму) ещё не прошёл — не проверяем снова
+    assert tr.detect_telegram(now=1010.0) == []
+    ev = tr.detect_telegram(now=1070.0)  # 0 -> 3
+    assert ev and ev[0]["kind"] == "telegram.unread" and "3" in ev[0]["text"]
+    assert tr.detect_telegram(now=1140.0) == []  # 3 -> 3, без изменений
+    ev2 = tr.detect_telegram(now=1210.0)  # 3 -> 5
+    assert ev2 and "2" in ev2[0]["text"]  # прирост на 2
+    assert ev2[0]["llm"] is False and ev2[0]["urgent"] is False
+
+
+def test_triggers_telegram_handles_api_error_silently(tmp_path):
+    core = load_plugin("jarvis-core")
+
+    def boom():
+        raise RuntimeError("нет сети")
+
+    tr = core.Triggers(state_file=tmp_path / "t.json", notify=lambda t, x: None, emit=lambda e, d: None,
+                       telegram_watch=True, telegram_unread_fn=boom)
+    assert tr.detect_telegram(now=1000.0) == []
+
+
 def test_screen_context_detects_phrases_and_injects(monkeypatch):
     core = load_plugin("jarvis-core")
     for ok in ("что у меня на экране?", "посмотри сюда, что это за ошибка на экране", "Jarvis, переведи текст на экране", "what's on my screen"):

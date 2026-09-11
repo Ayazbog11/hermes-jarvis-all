@@ -14,6 +14,13 @@
   user.returned     Mac был без ввода ≥ idle_min минут (по умолчанию 90) и пользователь вернулся;
                     если это первый раз за день после 06:00 → утренний брифинг; иначе — короткое «что изменилось»
   calendar.soon     приходит из Watchdog (событие через lead_min) — модель готовит справку
+  telegram.unread   выключено по умолчанию (telegram_watch=false, см. plugin.yaml) — если включено,
+                    раз в telegram_check_min (по умолчанию 10) минут сверяет число непрочитанных в
+                    личном Telegram (telegram_userbot.unread_summary()) и уведомляет БЕЗ модели и БЕЗ
+                    чтения текста сообщений при росте счётчика — только «N новых непрочитанных»,
+                    решение прочитать/ответить всегда остаётся за пользователем (тот же принцип
+                    «отправка только по явной просьбе», что и у messenger.py — здесь просто зеркально
+                    для входящих: замечать, не действовать самостоятельно)
 
 Правила тишины: LLM-триггеры не чаще одного раза в cooldown_min (15) минут; в режимах focus/night
 срабатывают только urgent. Все состояния — в памяти процесса + небольшой файл triggers.json
@@ -28,6 +35,7 @@ import logging
 import os
 import shutil
 import subprocess
+
 import threading
 import time
 from pathlib import Path
@@ -39,7 +47,8 @@ HEARTBEAT_SKILL = "jarvis/heartbeat"
 
 class Triggers:
     def __init__(self, state_file: Path, vault_root: Path | None = None, disk_min_gb: int = 20, idle_min: int = 90,
-                 cooldown_min: int = 15, llm: bool = True, notify=None, emit=None, get_mode=None, runner=None):
+                 cooldown_min: int = 15, llm: bool = True, notify=None, emit=None, get_mode=None, runner=None,
+                 telegram_watch: bool = False, telegram_check_min: int = 10, telegram_unread_fn=None):
         self.state_file = state_file
         self.vault_root = vault_root or Path(os.environ.get("JARVIS_VAULT_DIR") or "~/JARVIS").expanduser()
         self.disk_min_gb = disk_min_gb
@@ -50,6 +59,9 @@ class Triggers:
         self.emit = emit or (lambda event, data: None)
         self.get_mode = get_mode or (lambda: "normal")
         self.runner = runner or self._run_hermes  # callable(prompt) -> str | None; подменяется в тестах
+        self.telegram_watch = telegram_watch
+        self.telegram_check_sec = max(60, telegram_check_min * 60)
+        self.telegram_unread_fn = telegram_unread_fn  # callable() -> dict (telegram_userbot.unread_summary); подменяется в тестах
         self.st = self._load()
         self._was_idle = False
         self._last_power: bool | None = None
@@ -107,6 +119,35 @@ class Triggers:
                             "3) Ответь пользователю одним-двумя предложениями: что это и что с этим можно сделать "
                             "(например: «это договор с Acme до 2026 — записать срок в память? разложить в inbox/договоры?»). "
                             "Ничего не перемещай и не удаляй без просьбы. Если файлы служебные/пустые — NO_REPLY.")}]
+
+    def detect_telegram(self, now: float) -> list[dict]:
+        """Уведомить о РОСТЕ числа непрочитанных в личном Telegram — не читает и не пересказывает
+
+        текст сообщений (это делает модель по явной просьбе через jarvis_telegram), только замечает
+        изменение счётчика, как обычное уведомление о новом сообщении на телефоне. Выключено по
+        умолчанию (см. plugin.yaml: telegram_watch) — включается пользователем явно."""
+        if not self.telegram_watch or not self.telegram_unread_fn:
+            return []
+        if now - self.st.get("last_telegram_check", 0) < self.telegram_check_sec:
+            return []
+        self.st["last_telegram_check"] = now
+        try:
+            summary = self.telegram_unread_fn()
+        except Exception as e:
+            logger.debug("detect_telegram: %s", e)
+            return []
+        if not summary or not summary.get("success"):
+            return []
+        total = int(summary.get("total_unread") or 0)
+        prev = int(self.st.get("last_telegram_unread", 0))
+        self.st["last_telegram_unread"] = total
+        if total <= prev or total == 0:
+            return []
+        delta = total - prev
+        chats = summary.get("chats_with_unread", 0)
+        return [{"kind": "telegram.unread",
+                 "text": f"Новых непрочитанных в Telegram: {delta} (всего {total} в {chats} чатах).",
+                 "llm": False, "urgent": False}]
 
     def detect_return(self, idle_sec: float | None, now: float) -> list[dict]:
         if idle_sec is None:
@@ -190,5 +231,6 @@ class Triggers:
             if battery:
                 events += self.detect_power(*battery)
             events += self.detect_inbox()
+            events += self.detect_telegram(now)
             events += self.detect_return(idle if idle is not None else self.idle_seconds(), now)
             return self.handle(events, now)

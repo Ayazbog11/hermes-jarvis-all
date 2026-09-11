@@ -91,3 +91,11 @@ config_schema:
     type: str
     default: ""
     description: "Если задано (например 'telegram' или 'discord:#alerts') — важные локальные уведомления (низкий заряд, скорая встреча) дублируются туда через `hermes send`, помимо десктоп-уведомления. Требует настроенной в Hermes gateway платформы. Пусто — дублирования нет (по умолчанию)."
+  telegram_watch:
+    type: bool
+    default: false
+    description: "Уведомлять локально (без LLM, без чтения текста сообщений) о росте числа непрочитанных в личном Telegram (требует `jarvis telegram setup`). Выключено по умолчанию — включите явно, если хотите такие уведомления."
+  telegram_check_min:
+    type: int
+    default: 10
+    description: "Как часто (в минутах) проверять число непрочитанных в Telegram, если telegram_watch включён"
