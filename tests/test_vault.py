@@ -199,11 +199,11 @@ def test_cli_entrypoint(brain, tmp_path, monkeypatch):
     env = {**os.environ, "JARVIS_VAULT_DIR": str(root), "JARVIS_BRAIN_DIR": str(tmp_path / "db")}
     script = Path(__file__).resolve().parents[1] / "plugins" / "jarvis-brain" / "vault.py"
     brain.brain().close(); brain._brain = None; brain._vault = None
-    r = subprocess.run([sys.executable, str(script), "reindex"], capture_output=True, text=True, env=env)
+    r = subprocess.run([sys.executable, str(script), "reindex"], capture_output=True, text=True, encoding="utf-8", env=env)
     assert r.returncode == 0 and "проиндексировано" in r.stdout
-    r = subprocess.run([sys.executable, str(script), "search", "сосед", "--json"], capture_output=True, text=True, env=env)
+    r = subprocess.run([sys.executable, str(script), "search", "сосед", "--json"], capture_output=True, text=True, encoding="utf-8", env=env)
     assert r.returncode == 0 and json.loads(r.stdout)[0]["rel"] == "a.md"
-    r = subprocess.run([sys.executable, str(script), "status"], capture_output=True, text=True, env=env)
+    r = subprocess.run([sys.executable, str(script), "status"], capture_output=True, text=True, encoding="utf-8", env=env)
     assert r.returncode == 0 and "Файлов в индексе: 2" in r.stdout
 
 

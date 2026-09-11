@@ -798,10 +798,10 @@ def linux_shortcut(args: dict) -> str:
     py = d / f"{name}.py"
     inp = args.get("input") or ""
     if sh.exists():
-        proc = subprocess.run(["bash", str(sh), inp], capture_output=True, timeout=120, text=True)
+        proc = subprocess.run(["bash", str(sh), inp], capture_output=True, timeout=120, text=True, encoding="utf-8", errors="replace")
     elif py.exists():
         import sys as _sys
-        proc = subprocess.run([_sys.executable, str(py), inp], capture_output=True, timeout=120, text=True)
+        proc = subprocess.run([_sys.executable, str(py), inp], capture_output=True, timeout=120, text=True, encoding="utf-8", errors="replace")
     else:
         return json_err(f"Скрипт не найден: {d}/{name}.sh|.py")
     if proc.returncode != 0:

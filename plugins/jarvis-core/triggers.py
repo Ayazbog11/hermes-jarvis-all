@@ -167,7 +167,7 @@ class Triggers:
     def _run_hermes(prompt: str) -> str | None:
         hermes = shutil.which("hermes") or str(Path.home() / ".local" / "bin" / "hermes")
         try:
-            p = subprocess.run([hermes, "chat", "-s", HEARTBEAT_SKILL, "-q", prompt], capture_output=True, text=True, timeout=240,
+            p = subprocess.run([hermes, "chat", "-s", HEARTBEAT_SKILL, "-q", prompt], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240,
                                env={**os.environ, "JARVIS_TRIGGER": "1"})
             return p.stdout.strip().splitlines()[-1] if p.stdout.strip() else None
         except (subprocess.SubprocessError, OSError) as e:

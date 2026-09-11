@@ -56,7 +56,7 @@ def run(cmd: list[str] | str, timeout: int = 30, check: bool = True, shell: bool
     if isinstance(cmd, str) and not shell:
         cmd = shlex.split(cmd)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, shell=shell,
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, shell=shell,
                                input=input_text)
     except FileNotFoundError as e:
         raise LinuxError(f"Команда не найдена: {cmd if isinstance(cmd, str) else cmd[0]}") from e

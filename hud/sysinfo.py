@@ -37,7 +37,7 @@ _LOCK = threading.RLock()
 def _run(cmd: list[str], timeout: float = 10) -> str:
     try:
         kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw).stdout
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, **kw).stdout
     except (OSError, subprocess.SubprocessError):
         return ""
 

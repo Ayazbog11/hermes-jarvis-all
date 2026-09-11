@@ -126,7 +126,7 @@ def test_merge_config_preserves_user_values(tmp_path):
         "tts": {"provider": "elevenlabs"},
         "toolsets": {"hermes-cli": ["terminal", "web"]},
     }), encoding="utf-8")
-    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "merge_config.py"), str(frag), str(tgt)], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "merge_config.py"), str(frag), str(tgt)], capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     out = yaml.safe_load(tgt.read_text(encoding="utf-8"))
     assert out["model"] == "anthropic/claude-sonnet-4"                 # не тронуто
@@ -146,7 +146,7 @@ def test_jarvis_config_fragment_is_valid_yaml():
 def test_shell_scripts_syntax():
     bash = find_bash()
     for script in (ROOT / "install.sh", ROOT / "bin" / "jarvis", ROOT / "scripts" / "setup_cron.sh"):
-        r = subprocess.run([bash, "-n", str(script)], capture_output=True, text=True)
+        r = subprocess.run([bash, "-n", str(script)], capture_output=True, text=True, encoding="utf-8")
         assert r.returncode == 0, f"{script}: {r.stderr}"
 
 

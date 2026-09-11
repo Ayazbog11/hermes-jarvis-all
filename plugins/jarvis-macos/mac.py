@@ -38,7 +38,7 @@ def run(cmd: list[str] | str, timeout: int = 30, check: bool = True) -> str:
     if isinstance(cmd, str):
         cmd = shlex.split(cmd)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     except FileNotFoundError as e:
         raise MacError(f"Команда не найдена: {cmd[0]}") from e
     except subprocess.TimeoutExpired as e:

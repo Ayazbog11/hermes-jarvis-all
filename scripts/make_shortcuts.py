@@ -126,7 +126,7 @@ def sign_and_import(files: list[Path]) -> int:
     ok = 0
     for p in files:
         dst = signed_dir / p.name
-        r = subprocess.run(["shortcuts", "sign", "--mode", "anyone", "--input", str(p), "--output", str(dst)], capture_output=True, text=True)
+        r = subprocess.run(["shortcuts", "sign", "--mode", "anyone", "--input", str(p), "--output", str(dst)], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode != 0 or not dst.exists():
             print(f"  ✖ {p.name}: не подписалась ({(r.stderr or r.stdout).strip()[:120]})")
             continue
@@ -241,7 +241,7 @@ def _make_lnk(link_path: Path, ps1: Path, hidden: bool) -> bool:
         f"$s.WindowStyle = {style}; $s.IconLocation = 'shell32.dll,220'; $s.Save()"
     )
     r = subprocess.run(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", ps],
-                       capture_output=True, text=True, timeout=15,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
                        creationflags=subprocess.CREATE_NO_WINDOW)
     return r.returncode == 0 and link_path.exists()
 

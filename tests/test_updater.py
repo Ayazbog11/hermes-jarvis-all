@@ -178,7 +178,9 @@ def test_jarvis_update_tool(tmp_path, monkeypatch):
     r = json.loads(core.tool_jarvis_update({"action": "apply"}))
     assert r["success"] is False and "updater не установлен" in r["error"]
     fake_install(tmp_path, "1.3.1")
-    (tmp_path / "jarvis" / "update.py").write_text(Path("scripts/update.py").read_text(encoding="utf-8"))
+    (tmp_path / "jarvis" / "update.py").write_text(
+        Path("scripts/update.py").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     (tmp_path / "jarvis" / "update.json").write_text(json.dumps({"available": True, "latest": "1.4.0", "checked_at": "2026-09-10T10:00:00"}), encoding="utf-8")
     r = json.loads(core.tool_jarvis_update({"action": "apply"}))
     assert r["needs_confirmation"] and r["success"] is False   # без confirmed не ставим

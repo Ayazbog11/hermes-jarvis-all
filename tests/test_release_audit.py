@@ -106,7 +106,7 @@ def test_hud_rejects_huge_body(tmp_path, monkeypatch):
 def _jarvis(*args, env=None):
     e = {**os.environ, **(env or {})}
     return subprocess.run(
-        [find_bash(), str(ROOT / "bin" / "jarvis"), *args], capture_output=True, text=True, env=e
+        [find_bash(), str(ROOT / "bin" / "jarvis"), *args], capture_output=True, text=True, encoding="utf-8", env=e
     )
 
 
@@ -175,6 +175,6 @@ def test_install_json_written_by_installer_snippet(tmp_path):
     snippet = text[start:text.index("\nPY\n", start)]
     p = tmp_path / "install.json"
     p.write_text(json.dumps({"channel": "main", "auto_update": "auto", "commit": "old"}), encoding="utf-8")
-    subprocess.run([sys.executable, "-", str(p), "1.7.0", "", "x/y", "", ""], input=snippet, text=True, check=True)
+    subprocess.run([sys.executable, "-", str(p), "1.7.0", "", "x/y", "", ""], input=snippet, text=True, encoding="utf-8", check=True)
     d = json.loads(p.read_text(encoding="utf-8"))
     assert d["version"] == "1.7.0" and d["channel"] == "main" and d["auto_update"] == "auto" and d["commit"] == "old"

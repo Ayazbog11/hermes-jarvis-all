@@ -259,10 +259,13 @@ class Vault:
         return self.root
 
     def rel(self, path: Path) -> str:
+        # Всегда отдаём POSIX-стиль ("/") независимо от ОС: на Windows str(Path) даёт "\\",
+        # а этот путь хранится в БД, сравнивается в тестах и уходит наружу через API/skills —
+        # межплатформенная стабильность важнее «нативного» вида пути.
         try:
-            return str(path.relative_to(self.root))
+            return path.relative_to(self.root).as_posix()
         except ValueError:
-            return str(path)
+            return path.as_posix()
 
     # источники (подключённые внешние папки) --------------------------------
     def add_source(self, path: str | os.PathLike, name: str | None = None) -> dict:

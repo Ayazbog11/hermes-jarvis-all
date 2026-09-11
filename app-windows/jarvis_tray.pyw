@@ -81,7 +81,7 @@ def run_jarvis(args: list[str], timeout: int = 60) -> tuple[int, str]:
     """Запустить jarvis.ps1 <args> и вернуть (код, вывод) — синхронно, звать из фонового потока."""
     cmd = ["powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(JARVIS_BIN), *args]
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
                            creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
     except (OSError, subprocess.SubprocessError) as e:

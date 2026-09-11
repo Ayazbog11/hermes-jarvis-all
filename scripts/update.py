@@ -368,7 +368,7 @@ def rebuild_app() -> str:
     build = JARVIS_HOME / "app.src" / "build.sh"
     if not app.exists() or not build.exists() or not shutil.which("swiftc"):
         return ""
-    proc = subprocess.run(["bash", str(build), str(app)], capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(["bash", str(build), str(app)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     if proc.returncode != 0:
         return f"JARVIS.app не пересобрано: {(proc.stderr or proc.stdout)[-300:]}"
     running = subprocess.run(["pgrep", "-x", "JARVIS"], capture_output=True).returncode == 0
@@ -410,7 +410,7 @@ def apply(force: bool = False, tarball: str | None = None, version: str | None =
         else:
             cmd = ["bash", str(src / "install.sh"), "--yes", "--no-launchd", "--no-brew-tools",
                    "--no-voice", "--no-cron", "--no-app"]
-        proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=900,
+        proc = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
                               creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
         if proc.returncode != 0:
             restore_backup(backup)

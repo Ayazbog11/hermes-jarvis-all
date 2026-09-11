@@ -88,7 +88,7 @@ def sh(cmd: list[str], timeout: int = 20, env: dict | None = None) -> tuple[int,
             path = f"{BIN};" + os.environ.get("PATH", "")
         else:
             path = f"{BIN}:/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
                            env={**os.environ, "PATH": path, **(env or {})},
                            creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
         return p.returncode, (p.stdout or "") + (p.stderr or "")

@@ -881,9 +881,9 @@ def win_shortcut(args: dict) -> str:
     inp = args.get("input") or ""
     if script.exists():
         proc = subprocess.run(["powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), inp],
-                              capture_output=True, timeout=120, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                              capture_output=True, timeout=120, text=True, encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
     elif bat.exists():
-        proc = subprocess.run([str(bat), inp], capture_output=True, timeout=120, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        proc = subprocess.run([str(bat), inp], capture_output=True, timeout=120, text=True, encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
     else:
         return json_err(f"Скрипт не найден: {d}\\{name}.ps1|.bat")
     if proc.returncode != 0:

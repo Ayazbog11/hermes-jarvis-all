@@ -305,7 +305,7 @@ def tool_jarvis_update(args: dict, **kwargs) -> str:
     if not cmd:
         return json.dumps({"success": False, "error": f"неизвестное действие {action}"}, ensure_ascii=False)
     try:
-        proc = subprocess.run([sys.executable, str(script), *cmd], capture_output=True, text=True, timeout=900)
+        proc = subprocess.run([sys.executable, str(script), *cmd], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     except subprocess.TimeoutExpired:
         return json.dumps({"success": False, "error": "updater не ответил за 15 минут"}, ensure_ascii=False)
     out = (proc.stdout or "").strip()
