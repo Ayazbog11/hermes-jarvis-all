@@ -332,20 +332,25 @@ def test_semantic_env_toggle_disables_hybrid(brain, tmp_path, monkeypatch):
 
 
 def test_obsidian_config_candidates_cross_platform(brain, tmp_path, monkeypatch):
-    """На каждой ОС ищем obsidian.json в правильном системном месте (не только macOS)."""
+    """На каждой ОС ищем obsidian.json в правильном системном месте (не только macOS).
+
+    Сравниваем через Path.parts, а не строковый поиск подстроки "a/b/c" — на реальном Windows
+    (pathlib.WindowsPath) разделитель '\\', и такая проверка ложно проваливалась бы в CI на Windows,
+    даже когда platform замокан на 'win32'/'linux' в рамках этого же процесса.
+    """
     v, _ = _prep(brain, tmp_path)
     vault_mod = sys.modules["plug_jarvis_brain.vault"]
 
     monkeypatch.setattr(vault_mod.sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
-    win_paths = [str(p) for p in v._obsidian_config_candidates()]
-    assert any("AppData" in p and "obsidian.json" in p for p in win_paths)
+    win_paths = [p.parts for p in v._obsidian_config_candidates()]
+    assert any("AppData" in parts and "obsidian.json" in parts for parts in win_paths)
 
     monkeypatch.setattr(vault_mod.sys, "platform", "linux")
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    lin_paths = [str(p) for p in v._obsidian_config_candidates()]
-    assert any(".config/obsidian/obsidian.json" in p for p in lin_paths)
-    assert any("snap" in p for p in lin_paths)  # snap-упаковка учтена
+    lin_paths = [p.parts for p in v._obsidian_config_candidates()]
+    assert any(".config" in parts and "obsidian" in parts and "obsidian.json" in parts for parts in lin_paths)
+    assert any("snap" in parts for parts in lin_paths)  # snap-упаковка учтена
 
 
 def test_obsidian_note_creates_frontmatter_and_daily(brain, tmp_path):
