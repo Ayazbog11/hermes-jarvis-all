@@ -32,14 +32,14 @@ root нужен только `sudo` пакетному менеджеру, чт�
 Самый быстрый способ — одна команда (скачивает и сразу запускает установщик, шаги 1–2 сразу):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.linux.sh | bash
 ```
 
 Или вручную:
 
 ```bash
-git clone https://github.com/debug999-cyber/jarvis-hermes.git
-cd jarvis-hermes
+git clone https://github.com/Ayazbog11/hermes-jarvis-all.git
+cd hermes-jarvis-all
 ```
 
 Или скачайте zip последнего релиза с GitHub и распакуйте.

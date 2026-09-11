@@ -349,7 +349,7 @@ def _perms(icon, item):
 
 def _github(icon, item):
     inst = read_json(JARVIS_HOME / "install.json")
-    repo = inst.get("repo", "debug999-cyber/jarvis-hermes")
+    repo = inst.get("repo", "Ayazbog11/hermes-jarvis-all")
     webbrowser.open(f"https://github.com/{repo}")
 
 

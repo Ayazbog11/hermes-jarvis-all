@@ -54,11 +54,11 @@
 Одна команда в Terminal (скачает последний релиз и запустит установщик с вопросами):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.sh | bash
 ```
 
-Или вручную: [скачать zip релиза](https://github.com/debug999-cyber/jarvis-hermes/releases/latest) (внутри — готовое
-JARVIS.app, компилятор не нужен) → распаковать → `bash install.sh`. Или `git clone … && cd jarvis-hermes && ./install.sh`.
+Или вручную: [скачать zip релиза](https://github.com/Ayazbog11/hermes-jarvis-all/releases/latest) (внутри — готовое
+JARVIS.app, компилятор не нужен) → распаковать → `bash install.sh`. Или `git clone … && cd hermes-jarvis-all && ./install.sh`.
 
 Установщик сам поставит Homebrew-зависимости, Hermes Agent, голосовые пакеты, плагины, личность,
 навыки, cron-задачи, команду `jarvis` и (по желанию) автозапуск. В конце спросит провайдера LLM.
@@ -80,7 +80,7 @@ JARVIS.app, компилятор не нужен) → распаковать →
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned    # один раз, разрешить локальные скрипты
-iwr -useb https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.ps1 | iex
 ```
 
 Или вручную: скачать zip релиза → распаковать → `./install.ps1` в PowerShell (Shift + правый клик в папке →
@@ -98,10 +98,10 @@ iwr -useb https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/ge
 установлено (`jarvis selftest` покажет, чего не хватает именно у вас).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.linux.sh | bash
 ```
 
-Или вручную: `git clone https://github.com/debug999-cyber/jarvis-hermes.git && cd jarvis-hermes && bash install.linux.sh`.
+Или вручную: `git clone https://github.com/Ayazbog11/hermes-jarvis-all.git && cd hermes-jarvis-all && bash install.linux.sh`.
 
 Установщик сам поставит системные утилиты (best-effort, спросит), Hermes Agent, голосовые пакеты, плагины
 (`jarvis-linux` вместо `jarvis-macos`), личность, навыки, cron-задачи, команду `jarvis`, трей-приложение и

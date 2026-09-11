@@ -8,7 +8,7 @@
 ## Запуск тестов
 
 ```bash
-cd jarvis-hermes
+cd hermes-jarvis-all
 python3 -m pytest tests -q          # работает на macOS/Windows/Linux (платформенно-специфичные тесты скипаются на других ОС)
 ```
 

@@ -47,11 +47,13 @@ _TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
     <Description>{description}</Description>
   </RegistrationInfo>
   <Triggers>{triggers}</Triggers>
-  <Principal id="Author">
-    <UserId>{user}</UserId>
-    <LogonType>InteractiveToken</LogonType>
-    <RunLevel>LeastPrivilege</RunLevel>
-  </Principal>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{user}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>

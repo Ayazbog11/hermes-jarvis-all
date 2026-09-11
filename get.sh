@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # JARVIS — установка одной командой (macOS):
 #
-#     curl -fsSL https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.sh | bash
+#     curl -fsSL https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.sh | bash
 #
 # Что делает: скачивает последний стабильный релиз в ~/Downloads/jarvis-hermes (git clone, если git есть,
 # иначе zip релиза), затем запускает обычный install.sh — интерактивно, с вопросами (stdin берём из /dev/tty,
@@ -10,7 +10,7 @@
 #     JARVIS_DIR=~/path        куда положить исходники  JARVIS_INSTALL_ARGS="--yes --no-voice"  флаги install.sh
 set -euo pipefail
 
-REPO="${JARVIS_REPO:-debug999-cyber/jarvis-hermes}"
+REPO="${JARVIS_REPO:-Ayazbog11/hermes-jarvis-all}"
 CHANNEL="${JARVIS_CHANNEL:-stable}"
 DIR="${JARVIS_DIR:-$HOME/Downloads/jarvis-hermes}"
 ARGS="${JARVIS_INSTALL_ARGS:-}"

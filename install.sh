@@ -26,7 +26,7 @@ JARVIS_HOME="$HERMES_HOME/jarvis"          # копия HUD и служебны�
 BIN_DIR="$HOME/.local/bin"
 INSTALL_LAUNCHD=1; INSTALL_VOICE=1; INSTALL_BREW_TOOLS=1; INSTALL_CRON=1; INSTALL_APP=1; ASSUME_YES=0
 JARVIS_VERSION="$(cat "$JARVIS_SRC/VERSION" 2>/dev/null || echo 0.0.0)"
-JARVIS_REPO="${JARVIS_REPO:-debug999-cyber/jarvis-hermes}"
+JARVIS_REPO="${JARVIS_REPO:-Ayazbog11/hermes-jarvis-all}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -218,7 +218,7 @@ old = {}
 try: old = json.loads(p.read_text())
 except Exception: pass
 data = {**old, "version": ver, "commit": commit or old.get("commit", ""), "repo": repo,
-        "channel": channel or old.get("channel", "stable"), "auto_update": auto or old.get("auto_update", "check"),
+        "channel": channel or old.get("channel", "stable"), "auto_update": auto or old.get("auto_update", "auto"),
         "installed_at": datetime.datetime.now().replace(microsecond=0).isoformat()}
 p.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 PY

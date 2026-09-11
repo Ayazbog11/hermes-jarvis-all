@@ -18,17 +18,17 @@
 Самый простой способ — одна команда в Terminal (Программы → Утилиты → Terminal), она сделает шаги 1 и 2 сама:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.sh | bash
 ```
 
 Она скачает последний релиз в `~/Downloads/jarvis-hermes` и запустит установщик с вопросами. Если Xcode Command Line
 Tools ещё не стоят, macOS сначала предложит их поставить — дождитесь и запустите команду ещё раз.
 
-Вручную: [zip последнего релиза](https://github.com/debug999-cyber/jarvis-hermes/releases/latest) (внутри `app/prebuilt/JARVIS.app.zip` —
+Вручную: [zip последнего релиза](https://github.com/Ayazbog11/hermes-jarvis-all/releases/latest) (внутри `app/prebuilt/JARVIS.app.zip` —
 готовое приложение, компилятор не нужен) → распаковать → открыть терминал в папке. Или:
 ```bash
-git clone https://github.com/debug999-cyber/jarvis-hermes.git
-cd jarvis-hermes
+git clone https://github.com/Ayazbog11/hermes-jarvis-all.git
+cd hermes-jarvis-all
 ```
 
 ## 2. Запустить установщик
@@ -52,7 +52,7 @@ cd jarvis-hermes
 10. **launchd** (спросит) — автозапуск HUD и gateway при входе в систему.
 11. **cron** (спросит) — брифинг 08:00, вечерний итог 21:00, ночная ревизия базы знаний 03:30, чистка памяти по воскресеньям, heartbeat каждые 45 минут (`JARVIS_HEARTBEAT=0` — не создавать).
 12. **JARVIS.app** — собирается автоматически (нужны Xcode CLT), появляется в строке меню и запускается при входе; `--no-app` — пропустить.
-13. **Автообновление** — агент `ai.jarvis.updater` раз в день проверяет GitHub и уведомляет (режим `check`); `jarvis update --auto auto` — ставить самому.
+13. **Автообновление** — агент `ai.jarvis.updater` раз в день проверяет GitHub и **ставит обновление сам** (режим `auto` по умолчанию); `jarvis update --auto check` — только уведомлять, `jarvis update --auto off` — выключить.
 14. После установки выполните `jarvis selftest` — таблица покажет, каким интеграциям не хватает прав (`--fix` откроет панели).
     (Контроль батареи — локальный watchdog, без cron и без LLM.)
 12. **Модель** — если не настроена, откроется `hermes model`.
@@ -166,7 +166,7 @@ Wake word в фоне без открытого терминала: исполь
 ```bash
 jarvis update          # hermes update + переустановка плагинов JARVIS
 ```
-или вручную: `hermes update && cd jarvis-hermes && git pull && ./install.sh --yes --no-launchd --no-brew-tools`.
+или вручную: `hermes update && cd hermes-jarvis-all && git pull && ./install.sh --yes --no-launchd --no-brew-tools`.
 
 ## 10. Удаление
 

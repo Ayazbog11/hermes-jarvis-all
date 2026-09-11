@@ -6,7 +6,7 @@
 ## Вариант A — через GitHub CLI (проще всего)
 ```bash
 brew install gh && gh auth login          # один раз
-cd jarvis-hermes
+cd hermes-jarvis-all
 gh repo create jarvis-hermes --public --source=. --push --description "J.A.R.V.I.S. on Hermes Agent — голосовой ассистент для macOS с самообслуживаемой базой знаний"
 ```
 (`--private` вместо `--public`, если не хотите публиковать.)
@@ -15,7 +15,7 @@ gh repo create jarvis-hermes --public --source=. --push --description "J.A.R.V.I
 1. github.com → New repository → имя `jarvis-hermes`, **без** README/.gitignore/лицензии (они уже есть).
 2. В терминале:
 ```bash
-cd jarvis-hermes
+cd hermes-jarvis-all
 git remote add origin git@github.com:<ваш-логин>/jarvis-hermes.git   # или https://github.com/<логин>/jarvis-hermes.git
 git push -u origin main
 ```

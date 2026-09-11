@@ -61,7 +61,7 @@ $JarvisHomeDir = Join-Path $HermesHome "jarvis"
 $BinDir = Join-Path $HermesHome "bin"
 $JarvisVersion = (Get-Content (Join-Path $JarvisSrc "VERSION") -ErrorAction SilentlyContinue)
 if (-not $JarvisVersion) { $JarvisVersion = "0.0.0" }
-$JarvisRepo = if ($env:JARVIS_REPO) { $env:JARVIS_REPO } else { "debug999-cyber/jarvis-hermes" }
+$JarvisRepo = if ($env:JARVIS_REPO) { $env:JARVIS_REPO } else { "Ayazbog11/hermes-jarvis-all" }
 $Quiet = $env:JARVIS_QUIET -eq "1"
 
 # ─── оформление ───────────────────────────────────────────────────────────
@@ -332,7 +332,7 @@ old = {}
 try: old = json.loads(p.read_text(encoding="utf-8"))
 except Exception: pass
 data = {**old, "version": ver, "commit": commit or old.get("commit", ""), "repo": repo,
-        "channel": channel or old.get("channel", "stable"), "auto_update": auto or old.get("auto_update", "check"),
+        "channel": channel or old.get("channel", "stable"), "auto_update": auto or old.get("auto_update", "auto"),
         "installed_at": datetime.datetime.now().replace(microsecond=0).isoformat()}
 p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 '@

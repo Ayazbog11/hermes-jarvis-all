@@ -5,7 +5,7 @@ api_version: 1
 description: "J.A.R.V.I.S — управление Linux (X11/Wayland): приложения, громкость, яркость, музыка, напоминания, заметки, скриншоты, shell-скрипты"
 author: JARVIS Project
 license: MIT
-homepage: https://github.com/debug999-cyber/jarvis-hermes
+homepage: https://github.com/Ayazbog11/hermes-jarvis-all
 tags: [linux, jarvis, automation, desktop]
 
 provides_tools:

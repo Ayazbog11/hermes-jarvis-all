@@ -2,7 +2,7 @@
 <#
   JARVIS — установка одной командой (Windows):
 
-      iwr -useb https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.ps1 | iex
+      iwr -useb https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.ps1 | iex
 
   Что делает: скачивает последний стабильный релиз в %USERPROFILE%\Downloads\jarvis-hermes
   (git clone, если git есть, иначе zip релиза), затем запускает обычный install.ps1 —
@@ -17,7 +17,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Repo = if ($env:JARVIS_REPO) { $env:JARVIS_REPO } else { "debug999-cyber/jarvis-hermes" }
+$Repo = if ($env:JARVIS_REPO) { $env:JARVIS_REPO } else { "Ayazbog11/hermes-jarvis-all" }
 $Channel = if ($env:JARVIS_CHANNEL) { $env:JARVIS_CHANNEL } else { "stable" }
 $Dir = if ($env:JARVIS_DIR) { $env:JARVIS_DIR } else { Join-Path $env:USERPROFILE "Downloads\jarvis-hermes" }
 $ExtraArgs = if ($env:JARVIS_INSTALL_ARGS) { $env:JARVIS_INSTALL_ARGS -split "\s+" } else { @() }

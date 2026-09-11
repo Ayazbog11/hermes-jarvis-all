@@ -232,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func logs() { openInTerminal("jarvis logs") }
     @objc func openConfig() { NSWorkspace.shared.open(URL(fileURLWithPath: hermesHome + "/config.yaml")) }
     @objc func perms() { run(jarvisBin, ["perms"]) }
-    @objc func github() { let inst = readJSON(jarvisHome + "/install.json"); let repo = inst["repo"] as? String ?? "debug999-cyber/jarvis-hermes"; NSWorkspace.shared.open(URL(string: "https://github.com/\(repo)")!) }
+    @objc func github() { let inst = readJSON(jarvisHome + "/install.json"); let repo = inst["repo"] as? String ?? "Ayazbog11/hermes-jarvis-all"; NSWorkspace.shared.open(URL(string: "https://github.com/\(repo)")!) }
     @objc func quit() { NSApp.terminate(nil) }
 
     @objc func toggleServices() {

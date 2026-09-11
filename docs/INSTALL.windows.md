@@ -22,7 +22,7 @@
 
 ## 1. Скачать проект
 
-Скачайте zip последнего релиза с GitHub (или `git clone https://github.com/debug999-cyber/jarvis-hermes.git`),
+Скачайте zip последнего релиза с GitHub (или `git clone https://github.com/Ayazbog11/hermes-jarvis-all.git`),
 распакуйте, откройте PowerShell в этой папке (Shift + правый клик в Проводнике → «Открыть окно PowerShell здесь»).
 
 > Windows Defender/антивирус может на несколько секунд задержать первый запуск установщика, пока сканирует —

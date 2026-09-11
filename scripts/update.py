@@ -52,7 +52,7 @@ JARVIS_HOME = HERMES_HOME / "jarvis"
 INSTALL_JSON = JARVIS_HOME / "install.json"
 UPDATE_JSON = JARVIS_HOME / "update.json"
 BACKUPS = JARVIS_HOME / "backups"
-DEFAULT_REPO = "debug999-cyber/jarvis-hermes"
+DEFAULT_REPO = "Ayazbog11/hermes-jarvis-all"
 KEEP_BACKUPS = 3
 UA = {"User-Agent": "jarvis-updater", "Accept": "application/vnd.github+json"}
 IS_WINDOWS = sys.platform == "win32"
@@ -145,7 +145,12 @@ def installed() -> dict:
     d.setdefault("commit", "")
     d.setdefault("repo", DEFAULT_REPO)
     d.setdefault("channel", "stable")
-    d.setdefault("auto_update", "check")
+    # По умолчанию — полностью автоматическое обновление ("сам обновляется с гитхаба"):
+    # ежедневная задача (launchd/systemd/Task Scheduler) вызывает `update.py auto`, который при
+    # auto_update=auto скачивает и ставит новую версию без вопросов, а не только уведомляет.
+    # Пользователь может понизить до "check" (только уведомление) или "off" через
+    # `jarvis update --auto check|off`; кнопка «Обновить» в трее/меню всегда доступна вручную.
+    d.setdefault("auto_update", "auto")
     return d
 
 

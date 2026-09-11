@@ -56,11 +56,11 @@
 One command in Terminal (downloads the latest release and runs the interactive installer):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.sh | bash
 ```
 
-Or manually: [download the release zip](https://github.com/debug999-cyber/jarvis-hermes/releases/latest) (contains a
-prebuilt JARVIS.app — no compiler needed) → unzip → `bash install.sh`. Or `git clone … && cd jarvis-hermes && ./install.sh`.
+Or manually: [download the release zip](https://github.com/Ayazbog11/hermes-jarvis-all/releases/latest) (contains a
+prebuilt JARVIS.app — no compiler needed) → unzip → `bash install.sh`. Or `git clone … && cd hermes-jarvis-all && ./install.sh`.
 
 The installer sets up Homebrew dependencies, Hermes Agent, voice packages, plugins, personality, skills, cron jobs, the
 `jarvis` command and (optionally) launch-at-login. It asks for an LLM provider at the end and **pings the model** to make
@@ -74,7 +74,7 @@ permissions, vault and version, and repairs what it can. Details: [docs/INSTALL.
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-iwr -useb https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.ps1 | iex
 ```
 
 Same feature set as macOS (system control, HUD, knowledge base, file vault, messengers) except a couple of things
@@ -84,10 +84,10 @@ uses `jarvis-windows` plugin, a tray app instead of the menu bar, and Scheduled 
 ## Install (Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/debug999-cyber/jarvis-hermes/main/get.linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Ayazbog11/hermes-jarvis-all/main/get.linux.sh | bash
 ```
 
-Or manually: `git clone https://github.com/debug999-cyber/jarvis-hermes.git && cd jarvis-hermes && bash install.linux.sh`.
+Or manually: `git clone https://github.com/Ayazbog11/hermes-jarvis-all.git && cd hermes-jarvis-all && bash install.linux.sh`.
 
 Same feature set through standard desktop utilities (wmctrl/xdotool, pactl, nmcli, bluetoothctl, upower,
 grim/scrot, notify-send…) — works on any distro/desktop; some capabilities depend on what's installed

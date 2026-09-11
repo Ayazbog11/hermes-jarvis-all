@@ -61,7 +61,7 @@ jarvis update --check            только проверить
 jarvis update --status           версия, канал, режим, последняя проверка, есть ли откат
 jarvis update --rollback         вернуть предыдущую установку
 jarvis update --channel main     брать каждый коммит из main (по умолчанию stable — релизы GitHub)
-jarvis update --auto auto        режим: off | check (по умолчанию: проверять и уведомлять) | auto (ставить самому)
+jarvis update --auto auto        режим: off | check (только проверять и уведомлять) | auto (по умолчанию: ставить самому)
 jarvis update --hermes           обновить сам Hermes Agent
 ```
 

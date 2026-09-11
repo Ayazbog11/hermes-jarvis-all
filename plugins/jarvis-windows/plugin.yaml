@@ -5,7 +5,7 @@ api_version: 1
 description: "J.A.R.V.I.S — управление Windows: приложения, громкость, яркость, музыка, календарь (Outlook), напоминания, заметки, скриншоты, PowerShell-скрипты"
 author: JARVIS Project
 license: MIT
-homepage: https://github.com/debug999-cyber/jarvis-hermes
+homepage: https://github.com/Ayazbog11/hermes-jarvis-all
 tags: [windows, jarvis, automation, desktop]
 
 provides_tools:
