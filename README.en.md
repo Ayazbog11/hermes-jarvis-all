@@ -38,6 +38,8 @@
 | 📱 **Everywhere** | Telegram, Discord (incl. voice channels), WhatsApp, Slack, iMessage, Email — one agent, one memory | Hermes gateway |
 | ⏰ **Autonomy** | **event-driven triggers** (new files in the vault, you're back at the Mac → briefing, low disk, power unplugged — no LLM until there's a reason), cron jobs (08:00 briefing, evening recap, 03:30 nightly review), local watchdog (battery, **meeting prep from the knowledge base**, **macOS Focus → JARVIS mode**), `HEARTBEAT.md` checklist, focus/night/presentation modes | Hermes cron + `jarvis-core` |
 | 🏠 **Smart home** | Home Assistant (built-in toolset) or HomeKit via Shortcuts | skill `jarvis-home-automation` |
+| 📅 **Calendar** | Google Calendar — one implementation across macOS/Windows/Linux, no Outlook/MSIX needed; `jarvis calendar setup` once | `jarvis_calendar`, `plugins/jarvis-core/gcalendar.py`, `docs/CALENDAR.md` |
+| 🔑 **AI provider & keys** | Pick a provider/model and enter keys (`hermes model`), a separate model for screen/photo vision (`auxiliary.vision`), local models via Ollama — from the tray/menu bar or terminal | `hermes model`, `app-windows/jarvis_tray.pyw`, `app-linux/jarvis_tray.py`, `app/JarvisMenuBar.swift` |
 | 📦 **App** | JARVIS.app in the menu bar (macOS) / tray icon (Windows, Linux): status, HUD, voice, "Ask…", updates, **first-run wizard**, diagnostics, launch at login, **auto-update from GitHub** with backup & rollback | `app/`, `app-windows/`, `app-linux/`, `scripts/update.py` |
 | 🔒 **Safety** | dangerous commands need approval (approvals: smart), irreversible actions require `confirmed=true`, local STT, secrets never leave the machine | Hermes + our tools |
 
@@ -163,4 +165,13 @@ Full list with "what was borrowed": [docs/SOURCES.md](docs/SOURCES.md).
 
 **1.8.1 — stable, now on macOS, Windows and Linux.** 135+ automated tests (Linux/macOS/Windows, Python 3.11/3.12),
 `ruff`/`shellcheck`/PowerShell parser, a Swift build and a real browser e2e run on every commit; every release
-ships a prebuilt JARVIS.app. MIT. Hermes Agent — MIT © Nous Research.
+ships a prebuilt JARVIS.app.
+
+This project's own code (everything except the Hermes Agent dependency) is under a custom
+**source-available, noncommercial** license — see [LICENSE](LICENSE). In short: viewing, forking, and
+personal/noncommercial use (including modification) is free; **commercial use**, **relicensing/passing
+off a fork as original independent work**, and **using this code as AI/ML training data** all require the
+copyright holder's prior written consent. Request consent via
+[an issue on GitHub](https://github.com/Ayazbog11/hermes-jarvis-all/issues) or directly.
+
+Hermes Agent (a dependency, not part of this repo) stays MIT © Nous Research.

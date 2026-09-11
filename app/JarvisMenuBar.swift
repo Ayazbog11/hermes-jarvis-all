@@ -210,6 +210,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(.separator())
         add("Проверить обновления", #selector(checkUpdates), key: "u")
         add("Откатить последнее обновление", #selector(rollback))
+        m.addItem(.separator())
+        add("ИИ: ключи / модель / провайдер…", #selector(modelKeys))
+        add("ИИ: модель для зрения (vision)…", #selector(visionModel))
+        add("ИИ: подключить локальную модель (Ollama)…", #selector(ollamaLocal))
+        add("Календарь (Google Calendar)…", #selector(calendarSetup))
+        m.addItem(.separator())
         add("Настройки (config.yaml)", #selector(openConfig), key: ",")
         add("Разрешения macOS", #selector(perms))
         add("Логи", #selector(logs))
@@ -232,6 +238,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func logs() { openInTerminal("jarvis logs") }
     @objc func openConfig() { NSWorkspace.shared.open(URL(fileURLWithPath: hermesHome + "/config.yaml")) }
     @objc func perms() { run(jarvisBin, ["perms"]) }
+    // hermes model — ПОЛНЫЙ мастер провайдера/ключа/OAuth; slash /model внутри сессии умеет только
+    // переключать уже настроенное, поэтому именно терминальный hermes model.
+    @objc func modelKeys() { openInTerminal("hermes model && jarvis gateway restart") }
+    // auxiliary.vision в config.yaml — отдельная модель для vision_analyze (не обязана совпадать с чатом).
+    @objc func visionModel() { NSWorkspace.shared.open(URL(fileURLWithPath: hermesHome + "/config.yaml")) }
+    @objc func ollamaLocal() { openInTerminal("hermes model") }
+    @objc func calendarSetup() { openInTerminal("jarvis calendar setup") }
     @objc func github() { let inst = readJSON(jarvisHome + "/install.json"); let repo = inst["repo"] as? String ?? "Ayazbog11/hermes-jarvis-all"; NSWorkspace.shared.open(URL(string: "https://github.com/\(repo)")!) }
     @objc func quit() { NSApp.terminate(nil) }
 

@@ -177,9 +177,17 @@ Windows не даёт публичного API ни на чтение, ни на
 вручную (значок в трее Windows или `ms-settings:quiethours`); `jarvis-core` следует общему состоянию
 режима JARVIS независимо от реального Focus Assist ОС.
 
-### Outlook (календарь/контакты)
+### Календарь (Google Calendar) не отвечает / needs_setup
 
-`win_calendar`/`win_contacts` идут через COM-объект `Outlook.Application` — Outlook должен быть установлен
+Основной календарь JARVIS — Google Calendar (`jarvis_calendar`, кроссплатформенный) — см. подробную
+настройку в `docs/CALENDAR.md`. Если инструмент возвращает `needs_setup: true`, выполните
+`jarvis calendar setup` в терминале (один раз, откроет браузер для входа в Google). `jarvis calendar
+status` покажет, настроен ли client и авторизован ли аккаунт.
+
+### Outlook (fallback-календарь и контакты)
+
+`win_calendar` (только как fallback — по умолчанию используется `jarvis_calendar`/Google) и
+`win_contacts` идут через COM-объект `Outlook.Application` — Outlook должен быть установлен
 и хоть раз открыт с настроенным профилем по умолчанию. Новый интерфейс «Outlook (new)»/веб-версия по COM
 недоступны — нужен классический Outlook (Win32).
 

@@ -27,6 +27,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from . import gcalendar
 from . import platform_compat as pc
 from . import schemas, state
 from .hud_client import HudClient
@@ -339,6 +340,65 @@ def tool_jarvis_weather(args: dict, **kwargs) -> str:
         return json.dumps({"success": False, "error": f"Не удалось получить погоду: {e}"}, ensure_ascii=False)
 
 
+def tool_jarvis_calendar(args: dict, **kwargs) -> str:
+    """Google Calendar: единая реализация на всех трёх платформах (см. gcalendar.py)."""
+    action = args.get("action") or "status"
+    try:
+        if action == "status":
+            return json.dumps({"success": True, **gcalendar.status()}, ensure_ascii=False)
+
+        if not gcalendar.has_client() or not gcalendar.is_authorized():
+            return json.dumps({
+                "success": False,
+                "needs_setup": True,
+                "error": "Google Calendar не настроен/не авторизован. Пользователю нужно один раз "
+                         "выполнить `jarvis calendar setup` в терминале (откроется браузер для входа в Google).",
+            }, ensure_ascii=False)
+
+        today = dt.date.today()
+        if action in ("today", "tomorrow", "on_date"):
+            if action == "today":
+                d = today
+            elif action == "tomorrow":
+                d = today + dt.timedelta(days=1)
+            else:
+                d = dt.date.fromisoformat(args.get("date") or str(today))
+            tz_offset = dt.datetime.now().astimezone().strftime("%z")
+            tz_offset = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            time_min = f"{d.isoformat()}T00:00:00{tz_offset}"
+            time_max = f"{(d + dt.timedelta(days=1)).isoformat()}T00:00:00{tz_offset}"
+            events = gcalendar.list_events(time_min, time_max)
+            return json.dumps({"success": True, "date": str(d), "events": events}, ensure_ascii=False)
+
+        if action == "create":
+            title = args.get("title") or "Событие"
+            d = dt.date.fromisoformat(args.get("date") or str(today))
+            hh, mm = (args.get("start_time") or "12:00").split(":")
+            dur = int(args.get("duration_min") or 60)
+            start_dt = dt.datetime.combine(d, dt.time(int(hh), int(mm)))
+            end_dt = start_dt + dt.timedelta(minutes=dur)
+            tz_offset = start_dt.astimezone().strftime("%z")
+            tz_offset = f"{tz_offset[:3]}:{tz_offset[3:]}" if tz_offset else "+00:00"
+            created = gcalendar.create_event(
+                title, start_dt.isoformat() + tz_offset, end_dt.isoformat() + tz_offset,
+                description=args.get("description") or "", location=args.get("location") or "",
+            )
+            return json.dumps({"success": True, "created": title, "date": str(d),
+                               "start": f"{int(hh):02d}:{int(mm):02d}", "duration_min": dur,
+                               "id": created.get("id"), "link": created.get("htmlLink")}, ensure_ascii=False)
+
+        if action == "delete":
+            event_id = args.get("event_id")
+            if not event_id:
+                return json.dumps({"success": False, "error": "Нужен event_id (найдите его через today/on_date)"}, ensure_ascii=False)
+            gcalendar.delete_event(event_id)
+            return json.dumps({"success": True, "deleted": event_id}, ensure_ascii=False)
+
+        return json.dumps({"success": False, "error": f"Неизвестное действие: {action}"}, ensure_ascii=False)
+    except gcalendar.GCalError as e:
+        return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+
 # ══════════════════════════════ watchdog (без LLM) ═════════════════════════
 
 class Watchdog:
@@ -442,7 +502,21 @@ class Watchdog:
         return pc.battery_state()
 
     def upcoming_events(self) -> list[dict]:
-        """События, начинающиеся в ближайшие lead_min минут (Calendar.app / Outlook)."""
+        """События, начинающиеся в ближайшие lead_min минут.
+
+        Google Calendar (кроссплатформенный, если настроен через `jarvis calendar setup`) имеет
+        приоритет; иначе — платформенный источник (Calendar.app / Outlook / khal) через
+        platform_compat, как и раньше. Сетевые/авторизационные ошибки Google тихо проглатываются —
+        watchdog не должен падать или спамить пользователя из-за временной недоступности сети.
+        """
+        if gcalendar.has_client() and gcalendar.is_authorized():
+            try:
+                now = dt.datetime.now().astimezone()
+                end = now + dt.timedelta(minutes=self.lead_min)
+                events = gcalendar.list_events(now.isoformat(), end.isoformat())
+                return [{"title": e["title"], "start": e["start_label"]} for e in events]
+            except gcalendar.GCalError:
+                return []
         return pc.upcoming_events(self.lead_min)
 
     @staticmethod
@@ -520,6 +594,7 @@ def register(ctx) -> None:
     ctx.register_tool(name="jarvis_mode", toolset=TOOLSET, schema=schemas.JARVIS_MODE, handler=tool_jarvis_mode)
     ctx.register_tool(name="jarvis_weather", toolset=TOOLSET, schema=schemas.JARVIS_WEATHER, handler=tool_jarvis_weather)
     ctx.register_tool(name="jarvis_update", toolset=TOOLSET, schema=schemas.JARVIS_UPDATE, handler=tool_jarvis_update)
+    ctx.register_tool(name="jarvis_calendar", toolset=TOOLSET, schema=schemas.JARVIS_CALENDAR, handler=tool_jarvis_calendar)
 
     # бандл-скиллы плагина (jarvis-core:morning-briefing и т.д.)
     if _SKILLS_DIR.exists():

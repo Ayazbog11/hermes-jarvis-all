@@ -78,10 +78,23 @@ jarvis perms      # откроет нужные разделы «Парамет�
 | **Уведомления** | `win_notify`, тосты об обновлениях |
 | **Тихий час / Focus Assist** | Windows не даёт публичного API для чтения/переключения — переключается вручную (`ms-settings:quiethours`), `win_focus` честно об этом сообщает |
 | **Веб-камера** | `win_camera_snap` (опционально, нужен ffmpeg) |
-| **Outlook** | для `win_calendar` и `win_contacts` — должен быть установлен и настроен профиль по умолчанию (JARVIS обращается к нему через COM, не через облачный Graph API) |
+| **Outlook** (опционально) | только для `win_contacts` и fallback-`win_calendar` — должен быть установлен и настроен профиль по умолчанию (JARVIS обращается к нему через COM). Основной календарь — Google Calendar, см. ниже, Outlook не нужен |
 
 Если запускаете через Планировщик заданий (gateway/HUD в фоне) — им отдельные разрешения обычно не нужны,
 но если что-то не работает именно в фоне (а из интерактивного PowerShell работает) — см. `docs/TROUBLESHOOTING.md`.
+
+## 5а. Календарь (Google Calendar, один раз для всех трёх ОС)
+
+JARVIS использует Google Calendar как основной календарь на macOS/Windows/Linux — не нужен Outlook
+или другое ПО, работает одним и тем же кодом везде:
+
+```powershell
+jarvis calendar setup      # один раз: создать OAuth client в Google Cloud Console (инструкция выведется), войти через браузер
+jarvis calendar status     # проверить, что авторизовано
+jarvis calendar today      # события на сегодня
+```
+
+Подробная пошаговая инструкция (с созданием проекта в Google Cloud Console) — `docs/CALENDAR.md`.
 
 ## 5. Выбор LLM-провайдера
 

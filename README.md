@@ -35,6 +35,8 @@
 | 📱 **Везде** | Telegram, Discord (в т.ч. голосовые каналы), WhatsApp, Slack, iMessage, Email — одна память и один агент | Hermes gateway |
 | ⏰ **Автономность** | **событийные триггеры** (новые файлы в хранилище, возвращение к компьютеру → брифинг, диск, питание — без LLM, пока не появится повод), cron-задачи (брифинг 08:00, вечерний итог, ночная ревизия базы 03:30), локальный watchdog (батарея, **справка из базы перед встречей**, **режим «Не беспокоить» → режим JARVIS**), heartbeat по чек-листу `HEARTBEAT.md`, режимы focus/night/presentation | Hermes cron + `jarvis-core` |
 | 🏠 **Умный дом** | Home Assistant (встроенный toolset) или HomeKit через Shortcuts | навык `jarvis-home-automation` |
+| 📅 **Календарь** | Google Calendar — единый на macOS/Windows/Linux, не требует Outlook/MSIX; `jarvis calendar setup` один раз | `jarvis_calendar`, `plugins/jarvis-core/gcalendar.py`, `docs/CALENDAR.md` |
+| 🔑 **ИИ-провайдер и ключи** | Выбор провайдера/модели и ввод ключей (`hermes model`), отдельная модель для распознавания экрана/фото (`auxiliary.vision`), локальные модели через Ollama — из трея/меню-бара или терминала | `hermes model`, `app-windows/jarvis_tray.pyw`, `app-linux/jarvis_tray.py`, `app/JarvisMenuBar.swift` |
 | 📦 **Приложение** | JARVIS.app в строке меню (macOS) / значок в трее (Windows, Linux): статус, HUD, голос, «Спросить…», обновления, **мастер первого запуска**, диагностика, автозапуск при входе, **автообновление с GitHub** с бэкапом и откатом | `app/`, `app-windows/`, `app-linux/`, `scripts/update.py` |
 | 🔒 **Безопасность** | подтверждение опасных команд (approvals: smart), необратимые действия — только с confirmed=true, локальный STT, секреты не покидают компьютер | Hermes + наши инструменты |
 
@@ -222,4 +224,15 @@ jarvis-hermes/
 
 ## Лицензия
 
-MIT. Hermes Agent — MIT © Nous Research. Идеи HUD вдохновлены проектом [eadmin2/jarvis_ai](https://github.com/eadmin2/jarvis_ai) (MIT).
+Код этого проекта (всё, кроме зависимости Hermes Agent) распространяется по кастомной
+**source-available, некоммерческой** лицензии — см. [LICENSE](LICENSE). Коротко:
+
+- смотреть, форкать и использовать код для себя (в т.ч. изменять) — можно, бесплатно;
+- **коммерческое использование** — только с письменного согласия автора;
+- **релицензирование/выдача форка за свою оригинальную работу** — только с письменного согласия автора;
+- **использовать этот код как обучающие данные для ИИ/ML-моделей** (LLM, автодополнение кода и т.п.) — запрещено без письменного согласия автора.
+
+Запросить согласие: [issue в репозитории](https://github.com/Ayazbog11/hermes-jarvis-all/issues) или напрямую автору.
+
+Hermes Agent (зависимость, не входит в этот репозиторий) — MIT © Nous Research, лицензия не меняется.
+Идеи HUD вдохновлены проектом [eadmin2/jarvis_ai](https://github.com/eadmin2/jarvis_ai) (MIT).

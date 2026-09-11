@@ -174,6 +174,7 @@ cp "$JARVIS_SRC/scripts/selftest.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/update.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/doctor.py" "$JARVIS_HOME/"
 cp "$JARVIS_SRC/scripts/make_shortcuts.py" "$JARVIS_HOME/"
+cp "$JARVIS_SRC/scripts/calendar_cli.py" "$JARVIS_HOME/"
 cp -R "$JARVIS_SRC/app" "$JARVIS_HOME/app.src"   # исходник приложения строки меню (пересобирается при обновлении)
 cp "$JARVIS_SRC/VERSION" "$JARVIS_HOME/VERSION"
 [[ "$HERMES_HOME" == "$HOME/.hermes" ]] && rm -f "$HOME/.jarvis-home" || echo "$HERMES_HOME" > "$HOME/.jarvis-home"

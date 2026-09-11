@@ -106,6 +106,7 @@ J.A.R.V.I.S. on Hermes Agent
   jarvis app [build|quit|status|debug]  приложение строки меню JARVIS.app (Linux: трей на pystray — open|quit|status)
   jarvis version         версии JARVIS и Hermes
   jarvis perms           macOS: открыть нужные панели разрешений; Linux: список системных утилит для проверки
+  jarvis calendar [setup|status|today|tomorrow|logout]   Google Calendar (единый для всех ОС, не требует Outlook)
   jarvis config          открыть config.yaml Hermes в редакторе
   jarvis logs            хвост логов агента и HUD
 EOF
@@ -257,6 +258,10 @@ case "$cmd" in
       sleep 1; open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
       sleep 1; open "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
     fi ;;
+  calendar)
+    CAL_PY="$JARVIS_HOME/calendar_cli.py"
+    [[ -f "$CAL_PY" ]] || fail "calendar_cli.py не установлен ($INSTALL_HINT)"
+    exec "$PY" "$CAL_PY" "$@" ;;
   config)    exec hermes config edit ;;
   logs)      tail -n 40 "$HERMES_HOME/logs/agent.log" "$HUD_LOG" 2>/dev/null; hermes logs --follow 2>/dev/null || true ;;
   -h|--help|help) usage ;;

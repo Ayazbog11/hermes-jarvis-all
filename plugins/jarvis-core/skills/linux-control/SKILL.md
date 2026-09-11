@@ -30,7 +30,7 @@ metadata:
 | музыка | `linux_media` (через MPRIS/`playerctl` — работает с любым плеером, поддерживающим MPRIS: Spotify, VLC, mpv, browsers) |
 | что на экране? | `linux_screenshot` → `vision_analyze(path)` (Wayland: `grim`; X11: `scrot`/`import`; DE со своим инструментом: `gnome-screenshot`/`spectacle`) |
 | что видит камера? | `linux_camera_snap` → `vision_analyze(path)` |
-| планы / встречи | `linux_calendar` (нужен `khal`, настроенный на CalDAV — опционально, многие системы без него) |
+| планы / встречи | `jarvis_calendar` (Google Calendar — единый для всех ОС, настройка: `jarvis calendar setup`) или `linux_calendar` (нужен `khal`, настроенный на CalDAV) |
 | напомни | `linux_reminders` (локальный список) или `jarvis_timer` (короткие интервалы) |
 | запиши / заметка | `linux_notes` |
 | скопируй / вставь | `linux_clipboard` (X11: `xclip`; Wayland: `wl-clipboard`) |

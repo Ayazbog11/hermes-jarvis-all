@@ -83,3 +83,28 @@ JARVIS_WEATHER = {
         "properties": {"city": {"type": "string", "description": "Город; по умолчанию — из настроек"}},
     },
 }
+
+JARVIS_CALENDAR = {
+    "name": "jarvis_calendar",
+    "description": (
+        "Google Calendar — единый календарь JARVIS на macOS/Windows/Linux (не требует Outlook). "
+        "today/tomorrow/on_date — список событий; create — создать событие; delete — удалить; "
+        "status — настроен ли и авторизован ли календарь. Если status.authorized=false, "
+        "объясни пользователю, что нужно один раз выполнить `jarvis calendar setup` в терминале "
+        "(это открывает браузер для входа в Google-аккаунт) — сам инструмент авторизацию не запускает."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["status", "today", "tomorrow", "on_date", "create", "delete"]},
+            "date": {"type": "string", "description": "ISO-дата YYYY-MM-DD (для on_date)"},
+            "title": {"type": "string", "description": "Название события (для create)"},
+            "start_time": {"type": "string", "description": "Время начала HH:MM (для create), по умолчанию 12:00"},
+            "duration_min": {"type": "integer", "description": "Длительность в минутах (для create), по умолчанию 60"},
+            "location": {"type": "string", "description": "Место (для create)"},
+            "description": {"type": "string", "description": "Описание/заметка (для create)"},
+            "event_id": {"type": "string", "description": "ID события (для delete — сначала найдите его через today/on_date)"},
+        },
+        "required": ["action"],
+    },
+}

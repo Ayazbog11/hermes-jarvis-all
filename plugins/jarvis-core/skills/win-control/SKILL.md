@@ -28,7 +28,7 @@ metadata:
 | музыка | `win_media` |
 | что на экране? | `win_screenshot` → `vision_analyze(path)` |
 | что видит камера? | `win_camera_snap` → `vision_analyze(path)` |
-| планы / встречи | `win_calendar` (нужен настроенный Outlook) |
+| планы / встречи | `jarvis_calendar` (Google Calendar — единый для всех ОС, не требует Outlook; настройка: `jarvis calendar setup`) |
 | напомни | `win_reminders` (локальный список) или `jarvis_timer` (короткие интервалы) |
 | запиши / заметка | `win_notes` |
 | скопируй / вставь | `win_clipboard` |
@@ -48,7 +48,7 @@ metadata:
 ## Pitfalls
 - Имена приложений для `win_app` — как исполняемый файл без `.exe` (notepad, chrome, Telegram) или как он отображается в списке процессов.
 - `win_type` печатает в АКТИВНОЕ окно — сначала `win_app activate` нужного приложения.
-- `win_calendar`/`win_contacts` работают только если на машине настроен классический Outlook (COM-автоматизация); без него — понятная ошибка.
+- `jarvis_calendar` работает через Google Calendar (не Outlook) — если `needs_setup=true`, объясни пользователю, что нужно один раз выполнить `jarvis calendar setup` в терминале (откроется браузер для входа в Google). `win_contacts` по-прежнему требует настроенный классический Outlook (COM) — контакты в Google Calendar не переносились.
 - Bluetooth radio on/off штатно недоступен из PowerShell (только статус и список устройств) — Windows не даёт это делать без сторонних утилит, в отличие от `blueutil` на macOS.
 - Focus Assist (`win_focus`) не имеет документированного публичного API для чтения/записи статуса — сообщи пользователю об ограничении, если он спрашивает.
 - Не вызывай `win_say`, если TTS Hermes уже включён — будет двойной голос.

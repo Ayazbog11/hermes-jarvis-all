@@ -4,7 +4,7 @@ manifest_version: 2
 api_version: 1
 description: "J.A.R.V.I.S — ядро: контекст окружения, шина событий HUD, голографические панели, брифинги, режимы фокуса"
 author: JARVIS Project
-license: MIT
+license: LicenseRef-JARVIS-Noncommercial (see LICENSE)
 tags: [jarvis, hud, voice, assistant]
 
 provides_tools:
@@ -13,6 +13,7 @@ provides_tools:
   - jarvis_mode
   - jarvis_weather
   - jarvis_update
+  - jarvis_calendar
 
 provides_hooks:
   - pre_llm_call

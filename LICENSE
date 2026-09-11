@@ -1,9 +1,190 @@
-MIT License
+JARVIS on Hermes Agent — Source-Available Noncommercial License
 
-Copyright (c) 2026 JARVIS on Hermes contributors
+Copyright (c) 2026 Ayazbog11 and contributors. All rights reserved except as
+expressly granted below.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Required Notice: Copyright (c) 2026 Ayazbog11 (https://github.com/Ayazbog11/hermes-jarvis-all)
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+This license applies to the JARVIS-specific code, configuration, documentation,
+and assets in this repository (everything outside of the vendored/third-party
+`hermes-agent` package it depends on at runtime, which retains its own MIT
+license from Nous Research — see https://github.com/NousResearch/hermes-agent).
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+═══════════════════════════════════════════════════════════════════════════
+ 1. Base terms: PolyForm Noncommercial License 1.0.0
+═══════════════════════════════════════════════════════════════════════════
+
+Subject to the additional restrictions in Section 2 below, this software is
+licensed under the PolyForm Noncommercial License 1.0.0. The full text of
+that license follows; its canonical version lives at
+https://polyformproject.org/licenses/noncommercial/1.0.0
+
+------------------------------------------------------------------------------
+
+## Acceptance
+
+In order to get any license under these terms, you must agree to them as both
+strict obligations and conditions to all your licenses.
+
+## Copyright License
+
+The licensor grants you a copyright license for the software to do everything
+you might do with the software that would otherwise infringe the licensor's
+copyright in it for any permitted purpose. However, you may only distribute
+the software according to Distribution License and make changes or new works
+based on the software according to Changes and New Works License.
+
+## Distribution License
+
+The licensor grants you an additional copyright license to distribute copies
+of the software. Your license to distribute covers distributing the software
+with changes and new works permitted by Changes and New Works License.
+
+## Notices
+
+You must ensure that anyone who gets a copy of any part of the software from
+you also gets a copy of these terms or the URL for them above, as well as
+copies of any plain-text lines beginning with `Required Notice:` that the
+licensor provided with the software.
+
+## Changes and New Works License
+
+The licensor grants you an additional copyright license to make changes and
+new works based on the software for any permitted purpose.
+
+## Patent License
+
+The licensor grants you a patent license for the software that covers patent
+claims the licensor can license, or becomes able to license, that you would
+infringe by using the software.
+
+## Noncommercial Purposes
+
+Any noncommercial purpose is a permitted purpose.
+
+## Personal Uses
+
+Personal use for research, experiment, and testing for the benefit of public
+knowledge, personal study, private entertainment, hobby projects, amateur
+pursuits, or religious observance, without any anticipated commercial
+application, is use for a permitted purpose.
+
+## Noncommercial Organizations
+
+Use by any charitable organization, educational institution, public research
+organization, public safety or health organization, environmental protection
+organization, or government institution is use for a permitted purpose
+regardless of the source of funding or obligations resulting from the
+funding.
+
+## Fair Use
+
+You may have "fair use" rights for the software under the law. These terms do
+not limit them.
+
+## No Other Rights
+
+These terms do not allow you to sublicense or transfer any of your licenses
+to anyone else, or prevent the licensor from granting licenses to anyone
+else. These terms do not imply any other licenses.
+
+## Patent Defense
+
+If you make any written claim that the software infringes or contributes to
+infringement of any patent, your patent license for the software granted
+under these terms ends immediately. If your company makes such a claim, your
+patent license ends immediately for work on behalf of your company.
+
+## Violations
+
+The first time you are notified in writing that you have violated any of
+these terms, or done anything with the software not covered by your
+licenses, your licenses can nonetheless continue if you come into full
+compliance with these terms, and take practical steps to correct past
+violations, within 32 days of receiving notice. Otherwise, all your licenses
+end immediately.
+
+## No Liability
+
+As far as the law allows, the software comes as is, without any warranty or
+condition, and the licensor will not be liable to you for any damages arising
+out of these terms or the use or nature of the software, under any kind of
+legal claim.
+
+## Definitions
+
+The licensor is the individual or entity offering these terms, and the
+software is the software the licensor makes available under these terms.
+
+You refers to the individual or entity agreeing to these terms.
+
+Your company is any legal entity, sole proprietorship, or other kind of
+organization that you work for, plus all organizations that have control
+over, are under the control of, or are under common control with that
+organization. Control means ownership of substantially all the assets of an
+entity, or the power to direct its management and policies by vote,
+contract, or otherwise. Control can be direct or indirect.
+
+Your licenses are all the licenses granted to you for the software under
+these terms.
+
+Use means anything you do with the software requiring one of your licenses.
+
+------------------------------------------------------------------------------
+
+═══════════════════════════════════════════════════════════════════════════
+ 2. Additional restrictions specific to this project (override/extend
+    anything above where they conflict)
+═══════════════════════════════════════════════════════════════════════════
+
+2.1. No relicensing without consent. You may not sublicense, relicense,
+     white-label, or represent any copy, fork, or derivative of this
+     software as your own original work without the copyright holder's
+     prior written consent. Forking on GitHub for personal noncommercial
+     use under these same terms is permitted and does not require separate
+     consent; publishing that fork as if it were an unrelated, independently
+     authored project does.
+
+2.2. No commercial use without consent. Any commercial use — including but
+     not limited to selling, sublicensing, offering as a paid product or
+     paid service (SaaS/hosting), bundling with a commercial product, or
+     using within a for-profit business's internal operations — requires
+     the copyright holder's prior written consent, regardless of what the
+     PolyForm Noncommercial terms above might otherwise be read to allow.
+
+2.3. No use as AI/ML training data. You may not use this software, or any
+     portion of its source code, documentation, configuration, or other
+     content, to train, fine-tune, distill, evaluate, or otherwise develop
+     any machine learning or artificial intelligence model — including
+     large language models, code-completion models, or any other
+     AI system — whether for commercial or noncommercial purposes, without
+     the copyright holder's prior written consent. This restriction applies
+     regardless of whether the training is performed directly by you or by
+     a third party on your behalf (e.g., submitting this code to a
+     public/private model-training pipeline, dataset, or crawler).
+     Automated tools whose *sole* function is to assist a human developer in
+     reading, searching, or editing this exact repository during permitted
+     personal/noncommercial use (e.g., an IDE's local code-completion index
+     built only from this checkout) are not "training" for the purposes of
+     this clause, but no output of such a tool may be used to build a
+     redistributable model or dataset.
+
+2.4. Requesting consent. To request written consent under 2.1, 2.2, or 2.3,
+     open an issue at https://github.com/Ayazbog11/hermes-jarvis-all/issues
+     or contact the copyright holder directly through their GitHub profile
+     (https://github.com/Ayazbog11). Consent, if given, must be in writing
+     (including email or a written GitHub comment/issue reply) to be valid.
+
+2.5. Severability. If any part of Section 2 is found unenforceable in a
+     given jurisdiction, the remaining parts of Section 2 and the PolyForm
+     Noncommercial terms in Section 1 remain in effect.
+
+═══════════════════════════════════════════════════════════════════════════
+ 3. Third-party components
+═══════════════════════════════════════════════════════════════════════════
+
+This project depends on Hermes Agent (https://github.com/NousResearch/hermes-agent),
+which is separately licensed under the MIT License by Nous Research and is
+not covered by the terms above — only the JARVIS-specific code in *this*
+repository is. Other third-party dependencies retain their own licenses as
+declared in their respective packages.

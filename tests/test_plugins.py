@@ -49,7 +49,8 @@ def test_all_schemas_well_formed():
     core = load_plugin("jarvis-core")
     for s in macos.schemas.ALL_SCHEMAS:
         _check_schema(s)
-    for s in (core.schemas.JARVIS_HUD, core.schemas.JARVIS_TIMER, core.schemas.JARVIS_MODE, core.schemas.JARVIS_WEATHER):
+    for s in (core.schemas.JARVIS_HUD, core.schemas.JARVIS_TIMER, core.schemas.JARVIS_MODE, core.schemas.JARVIS_WEATHER,
+              core.schemas.JARVIS_CALENDAR):
         _check_schema(s)
 
 
@@ -66,7 +67,7 @@ def test_macos_register(ctx):
 def test_core_register(ctx):
     core = load_plugin("jarvis-core")
     core.register(ctx)
-    assert {"jarvis_hud", "jarvis_timer", "jarvis_mode", "jarvis_weather", "jarvis_update"} == set(ctx.tools)
+    assert {"jarvis_hud", "jarvis_timer", "jarvis_mode", "jarvis_weather", "jarvis_update", "jarvis_calendar"} == set(ctx.tools)
     for hook in ("pre_llm_call", "post_llm_call", "pre_tool_call", "post_tool_call", "on_session_start"):
         assert hook in ctx.hooks
     assert {"brief", "focus", "timer"} <= set(ctx.commands)

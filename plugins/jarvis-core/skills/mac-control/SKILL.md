@@ -28,7 +28,7 @@ metadata:
 | музыка | `mac_media` |
 | что на экране? | `mac_screenshot` → `vision_analyze(path)` |
 | что видит камера? | `mac_camera_snap` → `vision_analyze(path)` |
-| планы / встречи | `mac_calendar` |
+| планы / встречи | `jarvis_calendar` (Google Calendar — единый для всех ОС) или `mac_calendar` (нативный Calendar.app) — предпочитай `jarvis_calendar`, если пользователь настроил `jarvis calendar setup` |
 | напомни | `mac_reminders` (с датой) или `jarvis_timer` (короткие интервалы) |
 | запиши / заметка | `mac_notes` |
 | скопируй / вставь | `mac_clipboard` |

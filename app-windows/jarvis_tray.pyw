@@ -191,7 +191,7 @@ def first_run_wizard(force: bool = False) -> None:
             open_terminal("hermes model; jarvis gateway restart")
 
     if info_choice("Права и настройка Windows",
-                   "Чтобы читать календарь Outlook, показывать уведомления и делать скриншоты, "
+                   "Чтобы показывать уведомления и делать скриншоты, "
                    "может понадобиться разрешить это в Параметрах Windows. Проверка займёт ~20 секунд.",
                    ["Проверить (selftest --fix)", "Позже"]) == 0:
         open_terminal("jarvis selftest --fix")
@@ -347,6 +347,39 @@ def _perms(icon, item):
     run_jarvis_async(["perms"])
 
 
+def _model_keys(icon, item):
+    """Настройка ИИ-провайдера/ключа/модели — hermes model — это ПОЛНЫЙ мастер (добавление
+
+    провайдеров, OAuth, ключи); slash-команда /model внутри сессии умеет только переключать уже
+    настроенное, поэтому используем именно терминальный hermes model."""
+    open_terminal("hermes model; jarvis gateway restart")
+
+
+def _vision_model(icon, item):
+    """Отдельная модель для vision_analyze (распознавание экрана/фото) — не обязана совпадать
+
+    с основной моделью чата: см. auxiliary.vision в config.yaml (hermes doc: Auxiliary Models)."""
+    os.startfile(str(HERMES_HOME / "config.yaml"))
+    notify("JARVIS", "config.yaml открыт — раздел auxiliary.vision задаёт отдельную модель для "
+                      "распознавания экрана/фото (например, только для 'чистого зрения').")
+
+
+def _calendar_setup(icon, item):
+    open_terminal("jarvis calendar setup")
+
+
+def _ollama_local(icon, item):
+    """Подключить локальную модель (Ollama) — не требует ключа/интернета после установки."""
+    if info_choice(
+        "Локальная модель (Ollama)",
+        "Нужен установленный Ollama (ollama.com) и хотя бы одна скачанная модель, например:\n"
+        "  ollama pull qwen3:8b\n\nПосле этого откроется hermes model — выберите Custom endpoint "
+        "http://localhost:11434/v1.",
+        ["Открыть hermes model", "Отмена"],
+    ) == 0:
+        open_terminal("hermes model")
+
+
 def _github(icon, item):
     inst = read_json(JARVIS_HOME / "install.json")
     repo = inst.get("repo", "Ayazbog11/hermes-jarvis-all")
@@ -450,6 +483,12 @@ def build_menu() -> pystray.Menu:
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Проверить обновления", _check_updates),
         pystray.MenuItem("Откатить последнее обновление", _rollback),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("ИИ: ключи / модель / провайдер…", _model_keys),
+        pystray.MenuItem("ИИ: модель для зрения (vision)…", _vision_model),
+        pystray.MenuItem("ИИ: подключить локальную модель (Ollama)…", _ollama_local),
+        pystray.MenuItem("Календарь (Google Calendar)…", _calendar_setup),
+        pystray.Menu.SEPARATOR,
         pystray.MenuItem("Настройки (config.yaml)", _open_config),
         pystray.MenuItem("Параметры Windows (микрофон/уведомления/тихий час)", _perms),
         pystray.MenuItem("Логи", _logs),

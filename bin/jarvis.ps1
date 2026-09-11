@@ -147,6 +147,7 @@ J.A.R.V.I.S. on Hermes Agent (Windows)
   jarvis app [open|build|quit|status]  значок JARVIS в системном трее (Python + pystray)
   jarvis version         версии JARVIS и Hermes
   jarvis perms           открыть нужные разделы «Параметры Windows» (микрофон, уведомления, тихий час)
+  jarvis calendar [setup|status|today|tomorrow|logout]   Google Calendar (без Outlook)
   jarvis config          открыть config.yaml Hermes в редакторе
   jarvis logs            хвост логов агента и HUD
 "@ | Write-Host
@@ -400,6 +401,12 @@ switch ($Command) {
         Start-Process "ms-settings:notifications"; Start-Sleep -Seconds 1
         Start-Process "ms-settings:quiethours"; Start-Sleep -Seconds 1
         Start-Process "ms-settings:privacy-webcam"
+        break
+    }
+    "calendar" {
+        $calPy = Join-Path $JarvisHome "calendar_cli.py"
+        if (-not (Test-Path $calPy)) { Fail "calendar_cli.py не установлен (переустановите: install.ps1)" }
+        & $Py $calPy @Rest
         break
     }
     "config" { & hermes config edit; break }
