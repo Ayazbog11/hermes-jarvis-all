@@ -17,6 +17,15 @@ param(
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 
+# Windows PowerShell 5.1 по умолчанию декодирует вывод внешних программ (hermes.exe, python…) в
+# OEM-кодовой странице консоли, а не в UTF-8 — иначе русский текст из hermes/doctor/HUD-лога
+# выводился бы «кракозябрами». Переключаем консоль на UTF-8 при каждом запуске jarvis.
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    chcp 65001 > $null
+} catch { }
+
 # ─────────────────────────────── окружение ──────────────────────────────
 
 $HermesHome = $env:HERMES_HOME

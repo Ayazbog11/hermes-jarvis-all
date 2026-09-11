@@ -41,6 +41,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 по умолчанию декодирует stdout/stderr ВНЕШНИХ программ (hermes.exe,
+# schtasks.exe, winget…) в OEM-кодовой странице консоли (обычно cp866 на русской Windows), а не
+# в UTF-8, в котором эти программы реально пишут текст на английском/русском вперемешку — отсюда
+# «кракозябры» вида «тФВ jarvis-brain тФВ» в таблицах диагностики. Переключаем консоль на UTF-8
+# в начале скрипта, чтобы весь захватываемый вывод декодировался и печатался корректно.
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    chcp 65001 > $null
+} catch { }
+
 # ─── параметры ────────────────────────────────────────────────────────────
 
 $JarvisSrc = $PSScriptRoot
@@ -131,18 +142,34 @@ if (-not (Test-Path $HermesHome)) { Die "Не найден каталог Hermes
 $hv = (& hermes --version 2>$null | Select-Object -First 1)
 Ok "hermes $hv"
 
-# venv/интерпретатор Hermes (для pip-extras и запуска наших скриптов)
-$VenvPy = Join-Path $HermesHome "venv\Scripts\python.exe"
+# venv/интерпретатор Hermes (для pip-extras и запуска наших скриптов).
+# ВАЖНО: официальный установщик Hermes на Windows кладёт venv не в $HermesHome\venv, а в
+# $HermesHome\hermes-agent\venv (полный git-чекаут Hermes живёт в подпапке hermes-agent —
+# см. install.sh/install.linux.sh, где на POSIX используется тот же $HERMES_REPO/venv).
+# Раньше здесь ошибочно предполагался путь $HermesHome\venv, из-за чего $env:VIRTUAL_ENV
+# указывал в никуда и `uv pip install` падал с «Failed to inspect Python interpreter from
+# active virtual environment» — venv для uv просто не существовал по этому пути.
+$HermesRepoDir = Join-Path $HermesHome "hermes-agent"
+$VenvDir = Join-Path $HermesRepoDir "venv"
+$VenvPy = Join-Path $VenvDir "Scripts\python.exe"
 if (-not (Test-Path $VenvPy)) {
-    $pyCmd = Get-Command python.exe -ErrorAction SilentlyContinue
-    if (-not $pyCmd) { $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue }
-    $VenvPy = if ($pyCmd) { $pyCmd.Source } else { Die "Python не найден ни в venv Hermes, ни в PATH." }
+    # запасной путь на случай нестандартной раскладки/старых установок Hermes
+    $legacyVenvPy = Join-Path $HermesHome "venv\Scripts\python.exe"
+    if (Test-Path $legacyVenvPy) {
+        $VenvDir = Join-Path $HermesHome "venv"
+        $VenvPy = $legacyVenvPy
+    } else {
+        $pyCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+        if (-not $pyCmd) { $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue }
+        $VenvPy = if ($pyCmd) { $pyCmd.Source } else { Die "Python не найден ни в venv Hermes, ни в PATH." }
+        $VenvDir = $null
+    }
 }
 Ok "python: $VenvPy"
 
 function Invoke-Pip([string[]]$pipArgs) {
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
-        $env:VIRTUAL_ENV = Join-Path $HermesHome "venv"
+    if ($VenvDir -and (Get-Command uv -ErrorAction SilentlyContinue)) {
+        $env:VIRTUAL_ENV = $VenvDir
         & uv pip install -q @pipArgs 2>$null
     } else {
         & $VenvPy -m pip install -q @pipArgs
@@ -297,18 +324,29 @@ if ($userPath -notlike "*$BinDir*") {
 # install.json — по нему работает автообновление (jarvis update); настройки канала/режима сохраняются
 $writeInstallJson = @'
 import json, sys, datetime, pathlib
-p, ver, commit, repo, channel, auto = pathlib.Path(sys.argv[1]), *sys.argv[2:7]
+# args[6:] дополняем пустыми строками на случай, если вызывающая сторона (PowerShell отбрасывает
+# позиционные $null-аргументы внешних команд) передала меньше 6 значений — не падаем молча.
+args = (sys.argv[1:] + [""] * 6)[:6]
+p, ver, commit, repo, channel, auto = pathlib.Path(args[0]), *args[1:]
 old = {}
-try: old = json.loads(p.read_text())
+try: old = json.loads(p.read_text(encoding="utf-8"))
 except Exception: pass
 data = {**old, "version": ver, "commit": commit or old.get("commit", ""), "repo": repo,
         "channel": channel or old.get("channel", "stable"), "auto_update": auto or old.get("auto_update", "check"),
         "installed_at": datetime.datetime.now().replace(microsecond=0).isoformat()}
-p.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 '@
 $installJsonScript = Join-Path $env:TEMP "jarvis-write-install-json.py"
 Set-Content -Path $installJsonScript -Value $writeInstallJson -Encoding UTF8
-& $VenvPy $installJsonScript (Join-Path $JarvisHomeDir "install.json") $JarvisVersion $env:JARVIS_COMMIT $JarvisRepo $env:JARVIS_CHANNEL $env:JARVIS_AUTO_UPDATE
+# $env:JARVIS_COMMIT/$env:JARVIS_CHANNEL/$env:JARVIS_AUTO_UPDATE обычно не заданы при первой
+# установке (их выставляет только jarvis update). PowerShell при вызове внешней программы
+# полностью ОТБРАСЫВАЕТ позиционные аргументы со значением $null — а не передаёт пустую строку,
+# как можно было бы ожидать. Из-за этого пропадали сразу 3 аргумента и python получал 3 вместо 6
+# ("not enough values to unpack"). Подставляем явную пустую строку вместо $null.
+$commitArg = if ($env:JARVIS_COMMIT) { $env:JARVIS_COMMIT } else { "" }
+$channelArg = if ($env:JARVIS_CHANNEL) { $env:JARVIS_CHANNEL } else { "" }
+$autoArg = if ($env:JARVIS_AUTO_UPDATE) { $env:JARVIS_AUTO_UPDATE } else { "" }
+& $VenvPy $installJsonScript (Join-Path $JarvisHomeDir "install.json") $JarvisVersion $commitArg $JarvisRepo $channelArg $autoArg
 Remove-Item $installJsonScript -ErrorAction SilentlyContinue
 Ok "install.json: версия $JarvisVersion"
 

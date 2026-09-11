@@ -84,6 +84,13 @@ _RESTART_ON_FAILURE = "<RestartOnFailure><Interval>PT1M</Interval><Count>999</Co
 def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     kw.setdefault("capture_output", True)
     kw.setdefault("text", True)
+    # kw.setdefault("text", True) выше не ловится простым текстовым поиском "text=True" — subprocess
+    # без явного encoding= декодирует stdout/stderr дочернего процесса (schtasks.exe) через
+    # locale.getpreferredencoding(), которая на этой машине оказалась cp1251, а не UTF-8: вывод
+    # schtasks с любой не-ASCII последовательностью байт валился с UnicodeDecodeError прямо в
+    # фоновом _readerthread, из-за чего результат вообще не долетал до кода (пусто).
+    kw.setdefault("encoding", "utf-8")
+    kw.setdefault("errors", "replace")
     kw.setdefault("timeout", 30)
     if sys.platform == "win32":
         kw.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
