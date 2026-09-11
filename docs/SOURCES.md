@@ -84,10 +84,19 @@
 
 | Источник | Что взято |
 |---|---|
-| https://github.com/andyrewlee/awesome-agent-orchestrators | `model-watchdog` — паттерн авто-отката конфигурации при отказе (снимок → проверка → откат), без зависимостей; отмечен как кандидат для `jarvis ollama use` в будущем раунде |
+| https://github.com/andyrewlee/awesome-agent-orchestrators | `model-watchdog` — паттерн авто-отката конфигурации при отказе (снимок → проверка → откат), без зависимостей; реализован в `jarvis ollama use` в следующем же раунде (Раунд 7, `scripts/ollama_local.py:cmd_use()`/`ping_model()`/`_restore_snapshot()`, коммит `81b956f`) |
 | https://github.com/VasiHemanth/tokentelemetry, https://github.com/junhoyeo/tokscale, https://github.com/lanesket/llm.log, https://github.com/he-yufeng/TokenTracker | Принцип «не создавать новую телеметрию — читать то, что уже пишется»: локальный, zero-cloud дашборд расходов LLM — прообраз `jarvis usage` |
 | Документация Hermes Agent (session-storage / `state.db`) | Точная схема таблицы `sessions` (`input_tokens`, `output_tokens`, `estimated_cost_usd`, `model`, `source`, `started_at` и др.) — позволила читать её напрямую SQL-запросом без парсинга логов |
 | OWASP Top 10 for Agentic Applications | Общие соображения безопасности агентных приложений — подтвердили решение открывать `state.db` только в режиме `mode=ro` (не модифицировать чужую БД инструментом для чтения) |
+
+## 9. Раунд 8 — Telegram userbot через MTProto
+
+| Источник | Что взято |
+|---|---|
+| https://github.com/alex2772/kuni | Пересмотр Раунда 7: полноценный личный Telegram-аккаунт как поверхность агента (не только Bot API) — портирован на Telethon вместо tdlib (см. ниже), реализованы все возможности уровня оригинала: непрочитанные, история, медиа, отправка от имени владельца |
+| https://docs.telethon.dev/ | Чистая Python-реализация MTProto без сборки C++/tdlib — `TelegramClient.start()`/`send_code_request()`/`sign_in()` для интерактивного логина, `iter_dialogs()`/`iter_messages()`/`send_read_acknowledge()`/`send_file()`/`download_media()` как основа `telegram_userbot.py` |
+| https://my.telegram.org (API development tools) | Официальный источник `api_id`/`api_hash` для собственных приложений — аналог OAuth client id у Google Calendar, разовая пользовательская настройка, задокументирована в `docs/TELEGRAM.md` |
+| Telegram ToS / Terms of Service (общее прочтение, без единого канонического URL — telegram.org/tos) | Уточнение границы: запрет касается автоматизации, имитирующей человека для рассылки незапрошенных сообщений/накрутки чужих аккаунтов без их ведома — не касается владельца, добровольно дающего собственному инструменту доступ к своей же переписке (см. `docs/RESEARCH.md`, Раунд 8, для полного разбора) |
 
 ## Что сознательно не взято и почему
 
