@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.11.0 — `jarvis usage`: локальный учёт токенов и стоимости
+
+- **Новая команда `jarvis usage`** (`scripts/usage_report.py`) — показывает, сколько токенов и денег
+  потрачено, читая `~/.hermes/state.db` **только на чтение** (SQLite `mode=ro`, безопасно даже пока
+  Hermes работает). Разбивки: `--by-model`, `--by-platform` (CLI/Telegram/Discord/cron/API…),
+  `--by-day`, произвольный период `--since "7"/"30"/"2026-01-01"`, машиночитаемый `--json`.
+  Устойчиво к разным версиям схемы Hermes (проверяет наличие колонок перед запросом — старая база без
+  `estimated_cost_usd` просто покажет `$0.00`, а не упадёт с ошибкой) и к отсутствующей базе (понятная
+  ошибка вместо traceback). Без внешних зависимостей (без rich/pandas), без облачного дашборда и без
+  отдельной телеметрии — идея по образцу open-source трекеров расходов LLM (TokenTelemetry, tokscale,
+  llm.log, TokenTracker): не создавать новые данные, а читать те, что Hermes уже пишет. См.
+  `docs/RESEARCH.md` (Раунд 6) и `docs/AI-MODELS.md`.
+- По результатам обзора ≥50 GitHub-проектов уровня Hermes-Jarvis/Jarvis/агент (см. `docs/RESEARCH.md`,
+  Раунд 6) также отмечен, но отложен на будущее: авто-откат конфигурации для `jarvis ollama use`
+  (снимок `config.yaml` → проверка новой модели → откат при неудаче, по образцу `model-watchdog`).
+- +12 новых тестов (`tests/test_usage_report.py`), полный набор проходит без регрессий, `ruff` чист.
+
 ## 1.10.0 — Интеграция с Obsidian (Windows/Linux), гибридный поиск (BM25 + локальные эмбеддинги)
 
 - **Интеграция с Obsidian на Windows и Linux** — раньше `jarvis vault connect notes-obsidian` находил

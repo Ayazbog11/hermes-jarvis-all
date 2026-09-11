@@ -36,6 +36,7 @@
 | `jarvis version` | версии JARVIS и Hermes |
 | `jarvis calendar [setup\|status\|today\|tomorrow\|logout]` | Google Calendar — единый на всех ОС, см. [docs/CALENDAR.md](CALENDAR.md) |
 | `jarvis ollama [status\|list\|recommend\|pull <модель>\|use <модель> [--vision]]` | локальные модели через Ollama — без ключей и интернета после скачивания, см. [docs/AI-MODELS.md](AI-MODELS.md) |
+| `jarvis usage [--by-model\|--by-platform\|--by-day\|--since ...\|--json]` | сколько токенов и денег потрачено — читает `~/.hermes/state.db` **локально и только на чтение** (без облачных дашбордов и телеметрии), без Hermes/интернета не нужен |
 | `jarvis config` | открыть config.yaml |
 | `jarvis logs` | хвост логов |
 | `jarvis <любая команда hermes>` | прозрачно передаётся в `hermes` (`jarvis cron list`, `jarvis skills list`…) |

@@ -80,6 +80,15 @@
 | ai-tldr.dev (sqlite-vec explained), theconsensus.dev | Сравнение sqlite-vec/C-расширений vs чистый Python: для личного хранилища (не веб-масштаб) линейный перебор без доп. зависимостей — обоснованный выбор, не сделано ради простоты |
 | Reciprocal Rank Fusion (стандарт Elasticsearch/OpenSearch `reciprocal_rank_fusion`) | Формула `score = Σ 1/(k+rank+1)`, k=60 — способ объединить BM25-score и cosine-similarity без калибровки весов |
 
+## 8. Раунд 6 — обзор ≥50 проектов уровня Jarvis/агент, локальный учёт расходов
+
+| Источник | Что взято |
+|---|---|
+| https://github.com/andyrewlee/awesome-agent-orchestrators | `model-watchdog` — паттерн авто-отката конфигурации при отказе (снимок → проверка → откат), без зависимостей; отмечен как кандидат для `jarvis ollama use` в будущем раунде |
+| https://github.com/VasiHemanth/tokentelemetry, https://github.com/junhoyeo/tokscale, https://github.com/lanesket/llm.log, https://github.com/he-yufeng/TokenTracker | Принцип «не создавать новую телеметрию — читать то, что уже пишется»: локальный, zero-cloud дашборд расходов LLM — прообраз `jarvis usage` |
+| Документация Hermes Agent (session-storage / `state.db`) | Точная схема таблицы `sessions` (`input_tokens`, `output_tokens`, `estimated_cost_usd`, `model`, `source`, `started_at` и др.) — позволила читать её напрямую SQL-запросом без парсинга логов |
+| OWASP Top 10 for Agentic Applications | Общие соображения безопасности агентных приложений — подтвердили решение открывать `state.db` только в режиме `mode=ro` (не модифицировать чужую БД инструментом для чтения) |
+
 ## Что сознательно не взято и почему
 
 - **Полноценные векторные БД** (Qdrant, Milvus, Chroma, mem0/Cognee как внешний сервис): для личной базы в тысячи заметок/файлов чистый Python + BLOB в существующей `brain.db` не уступает по скорости и не требует лишнего процесса — ломало бы принцип «скачал и запустил». Лёгкая версия семантического поиска реализована локально в Раунде 5 (`plugins/jarvis-brain/embeddings.py`, опционально, требует только Ollama, которая уже была нужна проекту).
