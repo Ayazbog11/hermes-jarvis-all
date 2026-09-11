@@ -148,6 +148,7 @@ J.A.R.V.I.S. on Hermes Agent (Windows)
   jarvis version         версии JARVIS и Hermes
   jarvis perms           открыть нужные разделы «Параметры Windows» (микрофон, уведомления, тихий час)
   jarvis calendar [setup|status|today|tomorrow|logout]   Google Calendar (без Outlook)
+  jarvis ollama [status|list|recommend|pull <модель>|use <модель> [-vision]]   локальные модели Ollama, без ключей и интернета
   jarvis config          открыть config.yaml Hermes в редакторе
   jarvis logs            хвост логов агента и HUD
 "@ | Write-Host
@@ -407,6 +408,12 @@ switch ($Command) {
         $calPy = Join-Path $JarvisHome "calendar_cli.py"
         if (-not (Test-Path $calPy)) { Fail "calendar_cli.py не установлен (переустановите: install.ps1)" }
         & $Py $calPy @Rest
+        break
+    }
+    "ollama" {
+        $ollamaPy = Join-Path $JarvisHome "ollama_local.py"
+        if (-not (Test-Path $ollamaPy)) { Fail "ollama_local.py не установлен (переустановите: install.ps1)" }
+        & $Py $ollamaPy @Rest
         break
     }
     "config" { & hermes config edit; break }

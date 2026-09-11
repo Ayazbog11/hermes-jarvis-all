@@ -388,8 +388,11 @@ def _calendar_setup(icon, item):
 
 
 def _ollama_local(icon, item):
-    """Подключить локальную модель (Ollama) — не требует ключа/интернета после установки."""
-    open_terminal("hermes model")
+    """Подключить локальную модель (Ollama) — jarvis ollama сам скачивает модель и
+
+    прописывает её в config.yaml через `hermes config set` (без ручного редактирования
+    YAML и без похода в интерактивный hermes model вслепую)."""
+    open_terminal("jarvis ollama status; jarvis ollama recommend")
 
 
 def _github(icon, item):

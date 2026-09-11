@@ -90,6 +90,35 @@ Gist drewkerr + обсуждение в Macjutsu/super #155: состояние 
 Подтверждены и задействованы `post_tool_call` (статус/ошибка каждого инструмента), `pre_transcription` (возвращает
 `{"prompt": …}` — подсказка Whisper), `transform_llm_output` (замена финального ответа; первый непустой выигрывает).
 
+## Раунд 4 — сплошной аудит инструментов и сравнение с другими open-source «Jarvis» (сентябрь 2026)
+
+### Сравнение с другими open-source ассистентами на GitHub
+Изучены (2026): `isair/jarvis` (полностью локальный, Ollama по умолчанию, Moonshine ONNX + faster-whisper
+фолбэк, Piper/Chatterbox TTS, offline-диктовка по хоткею), `bertrandmbanwi/Jarvis` (macOS, 3-уровневая
+маршрутизация моделей Fast/Brain/Deep + Ollama-фолбэк, Kokoro TTS, OpenWakeWord), `rezaulhreza/jarvis`
+(Ollama-first, 35+ инструментов, веб-UI). Общий вывод: голосовой стек (faster-whisper/openWakeWord/Edge-TTS)
+у нас не хуже — эти проекты выигрывают только там, где **явно связывают Ollama с остальной системой одной
+командой**, а не оставляют это на усмотрение `hermes model`. Взято точечно: **`jarvis ollama` —
+CLI-обёртка над Ollama HTTP API** (список/скачивание/выбор модели одной командой, включая отдельно модель
+для зрения), а не просто инструкция «откройте hermes model и введите адрес». Полный локальный STT-стек
+(Moonshine/whisper.cpp) сознательно не взят — Hermes уже даёт faster-whisper из коробки на всех трёх ОС
+через единый `stt.provider: local`, дублировать не нужно.
+
+### Supply-chain безопасность CI (2026 best practice)
+Обзоры (oneuptime.com/blog, GitHub Community Discussions, microsoft/secrets-detection) сходятся на
+минимальном наборе для публичного репозитория: **secret scanning** (gitleaks/TruffleHog, полная история
+через `fetch-depth: 0`) и **dependency scanning** (`pip-audit` для Python, Dependabot для версий самих
+GitHub Actions — нередкий вектор атаки на CI через компрометацию сторонних actions). Добавлено:
+`.github/workflows/security.yml` (gitleaks + pip-audit, push/PR + еженедельно по расписанию),
+`.github/dependabot.yml` (обновления `github-actions` еженедельно), `.gitleaks.toml` (allowlist для
+намеренно фиктивных токенов в тестах/документации — не ослабляет реальное сканирование).
+
+### Что не взято и почему
+- Полная замена STT/TTS/wake-word стека — уже лучший вариант для этого проекта (см. Раунд 3), заново
+  проверено против 2026-обзоров: faster-whisper и openWakeWord остаются рекомендуемым выбором.
+- `alex2772/kuni` (tdlib-userbot с RAG-памятью) — архитектурно другая задача (Telegram-компаньон через
+  личный аккаунт), не «джарвис»-ассистент через Bot API; не применимо напрямую.
+
 ## Что уникального добавлено в этом проекте
 
 1. Плагин `jarvis-macos` — 29 типизированных инструментов с единым форматом ошибок и подсказками по разрешениям.

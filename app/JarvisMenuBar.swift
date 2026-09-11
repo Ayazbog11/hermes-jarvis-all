@@ -243,7 +243,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func modelKeys() { openInTerminal("hermes model && jarvis gateway restart") }
     // auxiliary.vision в config.yaml — отдельная модель для vision_analyze (не обязана совпадать с чатом).
     @objc func visionModel() { NSWorkspace.shared.open(URL(fileURLWithPath: hermesHome + "/config.yaml")) }
-    @objc func ollamaLocal() { openInTerminal("hermes model") }
+    // jarvis ollama сам скачивает модель и прописывает её в config.yaml через
+    // `hermes config set` (без ручного редактирования YAML и без похода в hermes model вслепую).
+    @objc func ollamaLocal() { openInTerminal("jarvis ollama status && jarvis ollama recommend") }
     @objc func calendarSetup() { openInTerminal("jarvis calendar setup") }
     @objc func github() { let inst = readJSON(jarvisHome + "/install.json"); let repo = inst["repo"] as? String ?? "Ayazbog11/hermes-jarvis-all"; NSWorkspace.shared.open(URL(string: "https://github.com/\(repo)")!) }
     @objc func quit() { NSApp.terminate(nil) }

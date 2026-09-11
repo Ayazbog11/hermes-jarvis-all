@@ -107,6 +107,7 @@ J.A.R.V.I.S. on Hermes Agent
   jarvis version         версии JARVIS и Hermes
   jarvis perms           macOS: открыть нужные панели разрешений; Linux: список системных утилит для проверки
   jarvis calendar [setup|status|today|tomorrow|logout]   Google Calendar (единый для всех ОС, не требует Outlook)
+  jarvis ollama [status|list|recommend|pull <модель>|use <модель> [--vision]]   локальные модели Ollama, без ключей и интернета
   jarvis config          открыть config.yaml Hermes в редакторе
   jarvis logs            хвост логов агента и HUD
 EOF
@@ -262,6 +263,10 @@ case "$cmd" in
     CAL_PY="$JARVIS_HOME/calendar_cli.py"
     [[ -f "$CAL_PY" ]] || fail "calendar_cli.py не установлен ($INSTALL_HINT)"
     exec "$PY" "$CAL_PY" "$@" ;;
+  ollama)
+    OLLAMA_PY="$JARVIS_HOME/ollama_local.py"
+    [[ -f "$OLLAMA_PY" ]] || fail "ollama_local.py не установлен ($INSTALL_HINT)"
+    exec "$PY" "$OLLAMA_PY" "$@" ;;
   config)    exec hermes config edit ;;
   logs)      tail -n 40 "$HERMES_HOME/logs/agent.log" "$HUD_LOG" 2>/dev/null; hermes logs --follow 2>/dev/null || true ;;
   -h|--help|help) usage ;;

@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # GitHub Actions, используемые в .github/workflows/*.yml — держим их закреплёнными
+  # версиями актуальными (supply-chain: сломанный/скомпрометированный сторонний action —
+  # частый вектор атаки на CI, см. инциденты 2025-2026 годов с tj-actions/changed-files и др.).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "ci"]

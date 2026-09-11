@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.9.0 — Google Calendar, управление ИИ-моделями (ключи/зрение/Ollama), лицензия, безопасность CI
+
+- **Google Calendar** — единый календарь на macOS/Windows/Linux вместо Outlook COM (Windows) /
+  Calendar.app / khal по отдельности. Outlook COM остаётся как опциональный fallback
+  (`win_calendar`, помечен «устарело для большинства»). Инструмент `jarvis_calendar`, CLI
+  `jarvis calendar setup|status|today|tomorrow|logout`. Подробности и почему не
+  `Windows.ApplicationModel.Appointments` (требует MSIX package identity) — `docs/CALENDAR.md`.
+  Файлы с client id/токеном (`gcalendar_client.json`, `gcalendar_token.json`) теперь
+  создаются с правами `0600` (только владелец) на macOS/Linux.
+- **Управление ИИ-провайдером/ключами/моделью для зрения** из трея (Windows/Linux) и меню-бара
+  (macOS): пункты «ИИ: ключи / модель / провайдер…» (`hermes model`) и «ИИ: модель для
+  зрения…» (открывает `auxiliary.vision` в `config.yaml`). Подробности — `docs/AI-MODELS.md`.
+- **`jarvis ollama`** (`scripts/ollama_local.py`) — реальная интеграция с локальным Ollama API
+  вместо «откройте hermes model и разберитесь сами»: `status` (что скачано, что выбрано в
+  Hermes), `list`, `recommend`, `pull <модель>`, `use <модель> [--vision] [--context N]` —
+  скачивает модель при необходимости и одной командой прописывает её в Hermes через
+  `hermes config set` (без ручной правки YAML). Пункты трея/меню-бара переведены на эту команду.
+- **Новая лицензия**: MIT → source-available некоммерческая (PolyForm Noncommercial 1.0.0 +
+  запрет релицензирования/выдачи форка за независимую работу без письменного согласия, запрет
+  коммерческого использования без согласия, запрет использования кода как данных для обучения
+  ИИ/ML без согласия). Зависимость Hermes Agent остаётся MIT © Nous Research.
+- **CI: сканирование секретов и зависимостей** (`.github/workflows/security.yml`) — gitleaks на
+  каждый push/PR плюс еженедельно по расписанию, `pip-audit` по пакетам, которые реально ставят
+  инсталляторы (voice/tray extras). Плюс `.github/dependabot.yml` — еженедельные обновления
+  версий GitHub Actions (защита от компрометации сторонних actions в CI).
+- Исследование инструментов проекта (STT/wake word/TTS/Telegram-gateway, включая разбор
+  `alex2772/kuni`) — существующий выбор (faster-whisper, openWakeWord, встроенный
+  python-telegram-bot gateway Hermes) подтверждён как лучший вариант для этого проекта на
+  сентябрь 2026; замены не потребовались, находки задокументированы в `docs/RESEARCH.md`.
+
 ## 1.8.1 — полный доступ к хранилищу: запись, порядок, авторезюме, iCloud/Obsidian
 
 - **Запись в хранилище инструментом агента**: `vault_manage write|mkdir|move|trash` — создать заметку/конспект, разложить `inbox/`

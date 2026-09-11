@@ -40,6 +40,7 @@ import http.server
 import json
 import os
 import secrets
+import stat
 import threading
 import time
 import urllib.error
@@ -70,6 +71,20 @@ def _data_dir() -> Path:
     p = Path(base)
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def _restrict_permissions(path: Path) -> None:
+    """Ограничить чтение/запись файла с токеном/client secret владельцем (chmod 600).
+
+    На Windows POSIX-биты chmod не действуют на NTFS-ACL, но os.chmod(0o600) всё равно
+    снимает атрибут "только чтение" для остальных пользователей, не даёт файлу попасть
+    в мир-читаемое состояние через umask и не вредит — безопасная попытка best-effort
+    на всех платформах (см. также docs/CALENDAR.md, раздел «Приватность»).
+    """
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
 
 
 def _token_path() -> Path:
@@ -103,6 +118,7 @@ def set_client(client_id: str, client_secret: str = "") -> None:
         json.dumps({"client_id": client_id, "client_secret": (client_secret or "").strip()}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    _restrict_permissions(_client_path())
 
 
 def _load_client() -> dict:
@@ -131,7 +147,9 @@ def _load_token() -> dict:
 def _save_token(data: dict) -> None:
     tmp = _token_path().with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _restrict_permissions(tmp)
     tmp.replace(_token_path())
+    _restrict_permissions(_token_path())
 
 
 def revoke() -> None:

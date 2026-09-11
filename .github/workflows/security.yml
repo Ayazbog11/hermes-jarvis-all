@@ -1,0 +1,46 @@
+name: security
+# Сканирование секретов (gitleaks) и известных уязвимостей в зависимостях (pip-audit).
+# Отдельный workflow от tests.yml, чтобы падение здесь не путалось с падением тестов —
+# и чтобы можно было запускать по расписанию (новые CVE появляются каждый день, даже
+# если код не менялся).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"   # раз в неделю, по понедельникам
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # полная история — иначе секрет, закоммиченный давно, не будет виден
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE не нужен: репозиторий принадлежит личному аккаунту, а не
+          # организации (лицензия обязательна только для организаций — gitleaks.io).
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit — зависимости тестов и CI
+        run: |
+          pip install pip-audit
+          # Пакеты, которые реально ставятся при работе с этим репозиторием: тестовое
+          # окружение CI (tests.yml) + voice/tray extras, которые устанавливают install.*.
+          pip install pytest pyyaml ruff faster-whisper edge-tts sounddevice numpy pystray pillow
+          pip-audit --strict --vulnerability-service osv
+        continue-on-error: true   # не блокирует merge — новые CVE не должны ломать не связанные PR;
+                                  # отчёт всё равно виден в логе запуска (см. Actions → security)

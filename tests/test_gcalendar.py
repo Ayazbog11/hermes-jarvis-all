@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import json
+import stat
+import sys
 
 import pytest
 
@@ -36,6 +38,20 @@ def test_set_client_persists(gcal):
 def test_set_client_empty_id_raises(gcal):
     with pytest.raises(gcal.GCalError):
         gcal.set_client("   ")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX chmod bits don't apply to NTFS ACLs")
+def test_set_client_restricts_file_permissions(gcal):
+    gcal.set_client("123-abc.apps.googleusercontent.com", "shh")
+    mode = stat.S_IMODE(gcal._client_path().stat().st_mode)
+    assert mode == stat.S_IRUSR | stat.S_IWUSR
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX chmod bits don't apply to NTFS ACLs")
+def test_save_token_restricts_file_permissions(gcal):
+    gcal._save_token({"access_token": "x", "expires_in": 3600, "obtained_at": 0})
+    mode = stat.S_IMODE(gcal._token_path().stat().st_mode)
+    assert mode == stat.S_IRUSR | stat.S_IWUSR
 
 
 def test_status_configured_not_authorized(gcal):

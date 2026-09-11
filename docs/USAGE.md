@@ -34,6 +34,8 @@
 | `jarvis update [--check\|--status\|--rollback\|--force\|--channel\|--auto\|--hermes]` | автообновление JARVIS с GitHub (см. docs/APP.md); `--hermes` — обновить сам Hermes |
 | `jarvis app [open\|build\|quit\|status\|debug]` | приложение строки меню JARVIS.app |
 | `jarvis version` | версии JARVIS и Hermes |
+| `jarvis calendar [setup\|status\|today\|tomorrow\|logout]` | Google Calendar — единый на всех ОС, см. [docs/CALENDAR.md](CALENDAR.md) |
+| `jarvis ollama [status\|list\|recommend\|pull <модель>\|use <модель> [--vision]]` | локальные модели через Ollama — без ключей и интернета после скачивания, см. [docs/AI-MODELS.md](AI-MODELS.md) |
 | `jarvis config` | открыть config.yaml |
 | `jarvis logs` | хвост логов |
 | `jarvis <любая команда hermes>` | прозрачно передаётся в `hermes` (`jarvis cron list`, `jarvis skills list`…) |

@@ -54,8 +54,22 @@
 | Apple Support — «Controlling app access to files in macOS», документация `osascript`, `shortcuts run`, `pmset`, `mdfind`, `screencapture` | Поведение утилит, на которых построены `mac_*` инструменты; какие права нужны каждому |
 | OWASP — CSRF Prevention Cheat Sheet | Same-origin проверка и JSON-only POST на HUD (без CORS `*`) |
 
+## 6. Раунд 4 — сравнение с другими open-source ассистентами, безопасность CI, Google Calendar
+
+| Источник | Что взято |
+|---|---|
+| https://github.com/isair/jarvis | Прямая интеграция с Ollama HTTP API одной командой (list/pull/use) вместо ручного `hermes model` → `jarvis ollama` |
+| https://github.com/bertrandmbanwi/Jarvis | Идея явного Ollama-фолбэка рядом с облачными моделями — уже покрыта `auxiliary.vision`/`model.provider: custom`, добавлен только удобный CLI поверх |
+| https://github.com/rezaulhreza/jarvis | Подтверждение Ollama-first подхода как распространённого паттерна для локальной модели в 2026 |
+| https://github.com/alex2772/kuni | Рассмотрен для идей Telegram-интеграции — архитектурно другая задача (tdlib userbot + RAG-компаньон), не применимо напрямую |
+| https://developers.google.com/identity/protocols/oauth2/native-app | OAuth "Desktop app" loopback-redirect + PKCE — основа `plugins/jarvis-core/gcalendar.py` |
+| oneuptime.com/blog (Security Scanning with GitHub Actions), microsoft/secrets-detection, GitHub Community Discussions #168683 | gitleaks (secret scanning, `fetch-depth: 0`) + `pip-audit` (dependency scanning) + Dependabot для версий GitHub Actions → `.github/workflows/security.yml`, `.github/dependabot.yml`, `.gitleaks.toml` |
+| https://github.com/ollama/ollama/blob/main/docs/api.md | HTTP API Ollama (`/api/tags`, `/api/pull`) — основа `scripts/ollama_local.py` без внешних зависимостей |
+| https://polyformproject.org/licenses/noncommercial/1.0.0 | Уже использован как база `LICENSE` (см. предыдущий раунд) |
+
 ## Что сознательно не взято и почему
 
 - **Векторные БД / эмбеддинги** (Mem0, Cognee, Hindsight): для личной базы в тысячи заметок FTS5 с карточками закрывает подавляющее большинство запросов, а лишний сервис ломает принцип «скачал и запустил». Место под это оставлено (миграции `Brain._migrate`).
 - **Свой агентский цикл / STT / TTS**: всё это есть в Hermes и работает одинаково в терминале, Telegram и Discord.
 - **Регулярки «фраза → действие»** из классических Jarvis: выбор инструмента делает модель по JSON-схемам.
+- **Полная замена локального STT/TTS-стека** (Moonshine ONNX, Kokoro и т.п. из isair/jarvis, bertrandmbanwi/Jarvis): Hermes уже даёт faster-whisper/openWakeWord/Edge-TTS кросс-платформенно из коробки — дублирование не оправдано (см. `docs/RESEARCH.md`, Раунд 3 и 4).
