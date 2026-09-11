@@ -315,6 +315,22 @@ def test_model_set_endpoint(hud_server, monkeypatch):
     assert calls == [("chat_model", "openai/gpt-4o")]
 
 
+def test_telegram_status_endpoint_not_configured(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.telegram_userbot, "status", lambda: {"available": True, "configured": False, "authorized": False})
+    st, body = _get(hud_server + "/api/telegram/status")
+    data = json.loads(body)
+    assert st == 200 and data["configured"] is False
+
+
+def test_telegram_status_endpoint_authorized_includes_unread(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.telegram_userbot, "status", lambda: {"available": True, "configured": True, "authorized": True, "username": "sir"})
+    monkeypatch.setattr(hud.telegram_userbot, "unread_summary", lambda: {"success": True, "total_unread": 7, "chats_with_unread": 3})
+    st, body = _get(hud_server + "/api/telegram/status")
+    data = json.loads(body)
+    assert st == 200 and data["authorized"] is True
+    assert data["total_unread"] == 7 and data["chats_with_unread"] == 3
+
+
 def test_brain_overview_endpoint(hud_server, tmp_path, monkeypatch):
     """/api/brain читает базу знаний в режиме read-only."""
     sys.path.insert(0, str(ROOT / "plugins" / "jarvis-brain"))

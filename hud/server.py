@@ -101,6 +101,12 @@ model_switch = _import_by_path(
     HERE.parent / "model_switch.py",              # установлено: $JARVIS_HOME/model_switch.py (сосед hud/)
     HERE.parent / "scripts" / "model_switch.py",   # дерево репозитория: scripts/model_switch.py
 )
+telegram_userbot = _import_by_path(
+    "jarvis_hud_telegram_userbot",
+    Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser() / "plugins" / "jarvis-core" / "telegram_userbot.py",
+    HERE.parent / "plugins" / "jarvis-core" / "telegram_userbot.py",
+    HERE.parent.parent / "plugins" / "jarvis-core" / "telegram_userbot.py",
+)
 
 DASH: sysinfo.Collector | None = None
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
@@ -391,6 +397,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_targets(parse_qs(u.query).get("platform", [""])[0])
         if u.path == "/api/model":
             return self._model_get()
+        if u.path == "/api/telegram/status":
+            return self._telegram_status()
         if u.path == "/file":
             p = parse_qs(u.query).get("path", [""])[0]
             real = os.path.realpath(os.path.expanduser(p))
@@ -606,6 +614,25 @@ class Handler(BaseHTTPRequestHandler):
         result = messenger.send_file(target, gen["path"], caption=(body.get("caption") or None) or None)
         BUS.publish({"event": "message.sent", "data": {"target": target, "success": result.get("success", False), "kind": "voice"}})
         return self._json(200, result)
+
+    # ── Telegram (личный аккаунт, MTProto) — виджет непрочитанных ──────────
+    def _telegram_status(self) -> None:
+        """GET /api/telegram/status — сводка непрочитанных для виджета HUD (read-only, без чтения текста).
+
+        Тот же telegram_userbot.py, что использует инструмент модели jarvis_telegram — HUD просто
+        открывает короткий путь для отображения статуса без похода в чат, как и остальные виджеты."""
+        if DASH is not None and getattr(DASH, "demo", False):
+            return self._json(200, {"available": True, "configured": True, "authorized": True,
+                                     "username": "demo_user", "total_unread": 3, "chats_with_unread": 2})
+        if telegram_userbot is None:
+            return self._json(200, {"available": False, "error": "telegram_userbot.py недоступен"})
+        st = telegram_userbot.status()
+        if st.get("authorized"):
+            unread = telegram_userbot.unread_summary()
+            if unread.get("success"):
+                st["total_unread"] = unread["total_unread"]
+                st["chats_with_unread"] = unread["chats_with_unread"]
+        return self._json(200, st)
 
     # ── Выбор модели ИИ по задаче (панель «Модели») ─────────────────────────
     def _model_get(self) -> None:

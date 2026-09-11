@@ -249,6 +249,10 @@
       <div class="hd"><span class="tile amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></span><h2>Модель ИИ</h2><button class="more" id="modelRefresh" title="Обновить"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
       <div class="bd" id="modelBody"><div class="empty">Загрузка…</div></div>
     </section>
+    <section class="card" id="cardTelegram">
+      <div class="hd"><span class="tile violet"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></span><h2>Telegram</h2><button class="more" id="tgRefresh" title="Обновить"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
+      <div class="bd" id="tgBody"><div class="empty">Загрузка…</div></div>
+    </section>
   </div>
 
   <div id="center">
@@ -536,6 +540,24 @@
   }
   loadModels();
   $('#modelRefresh').onclick = loadModels;
+
+  // ── «Telegram» — статус личного аккаунта (MTProto/Telethon, см. plugins/jarvis-core/telegram_userbot.py) ──
+  async function loadTelegram(){
+    const b = $('#tgBody');
+    try {
+      const j = await (await fetch('/api/telegram/status')).json();
+      if (!j.available) { b.innerHTML = `<div class="empty">telethon не установлен</div>`; return; }
+      if (!j.configured) { b.innerHTML = `<div class="empty">Не настроено. В терминале: <code>jarvis telegram setup</code></div>`; return; }
+      if (!j.authorized) { b.innerHTML = `<div class="empty">Не авторизовано${j.error?': '+esc(j.error):''}. <code>jarvis telegram setup</code></div>`; return; }
+      const who = j.username ? '@'+j.username : (j.phone || j.first_name || '?');
+      const unread = j.total_unread || 0;
+      b.innerHTML = `<div class="stats"><div class="stat"><small>Аккаунт</small><b>${esc(who)}</b></div>`
+        + `<div class="stat"><small>Непрочитанных</small><b>${unread}</b></div></div>`
+        + (unread ? `<div class="kbase"><div class="l"><span>Чатов с непрочитанными</span><b>${j.chats_with_unread||0}</b></div></div>` : '');
+    } catch { b.innerHTML = '<div class="empty">HUD не смог прочитать статус Telegram</div>'; }
+  }
+  loadTelegram(); setInterval(loadTelegram, 60000);
+  $('#tgRefresh').onclick = loadTelegram;
 
   $('#calRefresh').onclick = loadDash;
   $('#calAll').onclick = () => send('Что у меня сегодня и завтра по календарю? Кратко, по времени.');
