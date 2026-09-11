@@ -14,7 +14,7 @@ BUNDLES = ROOT / "skill-bundles"
 # skills/<name>/SKILL.md регистрируется по имени каталога (jarvis-core автосканирует свою папку skills/);
 # также существуют кроссплатформенные навыки из корневого skills/ (frontmatter name: jarvis-*) и jarvis-brain/skills/.
 _CROSS_PLATFORM = {
-    "morning-briefing", "brain-usage", "brain-nightly-review",
+    "morning-briefing", "brain-usage", "brain-nightly-review", "web-tasks",
     "jarvis-briefing", "jarvis-voice-etiquette", "jarvis-research-brief", "jarvis-home-automation",
 }
 _PLATFORM_ONLY = {

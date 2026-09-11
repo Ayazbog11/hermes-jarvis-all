@@ -33,6 +33,12 @@
   `jarvis_llm_sessions_total`, label `model`) поверх того же READ-ONLY чтения `state.db`, что и
   `jarvis usage`/`/api/usage` — аналог `llm_usage_*`-метрик `alex2772/kuni`, без установки
   Prometheus/Grafana-стека целиком: любой существующий Prometheus-сервер может scrape'ить HUD напрямую.
+- **Новый навык `web-tasks`** (`plugins/jarvis-core/skills/web-tasks/SKILL.md`, добавлен во все три
+  скилл-бандла) — decision table для задач-поиска с критериями («найди отель/билеты/товар») и для
+  «проанализируй эту страницу/экран»: когда достаточно `web_search`/`web_extract`, когда нужен полный
+  `browser_navigate`→`browser_snapshot`→`browser_click`/`browser_type`, когда `browser_vision`
+  (капча/сложная вёрстка), и когда работает уже существующий механизм `screen_context`+`vision_analyze`.
+  Никаких новых инструментов не добавлено — только явный порядок применения уже встроенных в Hermes.
 - +7 новых методов сверх ранее заявленного минимума (после Раунда 6: `jarvis_send_message`,
   Watchdog remote-alert, `win_process`/`mac_process`/`linux_process`, безопасный `ollama use`,
   HUD `/api/usage`, `/api/send`) — итого продолжается непрерывное сканирование других

@@ -8,6 +8,7 @@ skills:
   - jarvis-briefing
   - jarvis-voice-etiquette
   - jarvis-research-brief
+  - web-tasks
   - jarvis-home-automation
 instruction: |
   Ты работаешь как JARVIS на компьютере пользователя под Linux. Используй инструменты jarvis_linux
