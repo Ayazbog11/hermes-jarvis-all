@@ -33,9 +33,10 @@ BRAIN_RECALL = {
     "name": "brain_recall",
     "description": (
         "Найти в базе знаний JARVIS то, что уже известно по теме: предпочтения, людей, проекты, прошлые решения, «как обычно "
-        "делаем». Вызывай ПЕРЕД тем, как переспрашивать пользователя о том, что он мог уже говорить, и перед задачами, где "
-        "важен контекст (письмо коллеге, настройка проекта, рекомендации). Релевантные знания также подмешиваются в контекст "
-        "автоматически — используй инструмент для целенаправленного поиска."
+        "делаем». Гибридный поиск: точные слова (BM25) + при наличии локальной Ollama с nomic-embed-text — ещё и по смыслу "
+        "(находит и перефразировки). Вызывай ПЕРЕД тем, как переспрашивать пользователя о том, что он мог уже говорить, и "
+        "перед задачами, где важен контекст (письмо коллеге, настройка проекта, рекомендации). Релевантные знания также "
+        "подмешиваются в контекст автоматически — используй инструмент для целенаправленного поиска."
     ),
     "parameters": {
         "type": "object",
@@ -169,7 +170,9 @@ VAULT_SEARCH = {
     "name": "vault_search",
     "description": (
         "Поиск по СОДЕРЖИМОМУ файлов и проектов пользователя в хранилище JARVIS (~/JARVIS и подключённые папки): "
-        "документы, заметки, PDF, таблицы, исходный код. Возвращает файлы, номер строки и фрагмент. "
+        "документы, заметки, PDF, таблицы, исходный код. Гибридный: точные слова (BM25/FTS5) + при наличии локальной "
+        "модели эмбеддингов Ollama (nomic-embed-text, см. `jarvis ollama pull nomic-embed-text`) — ещё и по смыслу, "
+        "так находятся и перефразировки без общих слов с запросом. Возвращает файлы, номер строки и фрагмент. "
         "Используй, когда вопрос касается «моих файлов/документов/проекта/заметок/договора/кода». "
         "Дальше читай файл через vault_read или штатный read_file по возвращённому path — доступ полный, "
         "править можно обычными инструментами (write_file, terminal) по этим путям."
@@ -203,20 +206,29 @@ VAULT_MANAGE = {
     "description": (
         "Управление хранилищем ~/JARVIS и файлами в нём. Чтение: status; list (prefix, recent); tree; pending — новые файлы без резюме. "
         "Проекты: add — подключить папку (path, name) как projects/<name>; remove; connect — подключить стандартный источник "
-        "(what: icloud|desktop|documents|downloads|notes-obsidian); reindex. "
+        "(what: icloud|desktop|documents|downloads|notes-obsidian, работает на macOS/Windows/Linux — vault ищется по конфигу "
+        "Obsidian автоматически); obsidian_list — показать все найденные Obsidian-vault-ы, если их несколько и нужно уточнить; "
+        "reindex. "
         "Запись (только внутри хранилища/проектов): write (path, content, mode=overwrite|append) — создать/изменить текстовый файл; "
-        "mkdir (path); move (path, to) — переместить/переименовать, напр. разложить inbox по папкам; trash (path) — в Корзину "
-        "(необратимого удаления нет). summarized (file_id, note_id) — отметить файл как разобранный после brain_remember."
+        "obsidian_note (title, content, tags, folder?, daily=false) — создать заметку по конвенциям Obsidian: YAML-frontmatter "
+        "(created, tags), [[wiki-ссылки]] сохраняются как есть; daily=true → в папку ежедневных заметок из .obsidian/daily-notes.json "
+        "с именем-датой; mkdir (path); move (path, to) — переместить/переименовать, напр. разложить inbox по папкам; "
+        "trash (path) — в Корзину (необратимого удаления нет). summarized (file_id, note_id) — отметить файл как разобранный "
+        "после brain_remember."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "action": {"type": "string", "enum": ["status", "list", "tree", "pending", "add", "remove", "connect", "reindex",
-                                                  "write", "mkdir", "move", "trash", "summarized"]},
+                                                  "write", "mkdir", "move", "trash", "summarized", "obsidian_note", "obsidian_list"]},
             "path": {"type": "string"}, "name": {"type": "string"}, "prefix": {"type": "string"},
             "content": {"type": "string"}, "mode": {"type": "string", "enum": ["overwrite", "append"], "default": "overwrite"},
             "to": {"type": "string"}, "what": {"type": "string"}, "file_id": {"type": "integer"}, "note_id": {"type": "integer"},
             "recent": {"type": "boolean", "default": False}, "depth": {"type": "integer", "default": 2},
+            "title": {"type": "string", "description": "Заголовок заметки Obsidian (obsidian_note)"},
+            "tags": {"type": "string", "description": "Теги через запятую, без # (obsidian_note)"},
+            "folder": {"type": "string", "description": "Подпапка внутри vault-а (obsidian_note); по умолчанию — корень или папка daily notes"},
+            "daily": {"type": "boolean", "default": False, "description": "obsidian_note: создать/дополнить сегодняшнюю ежедневную заметку"},
         },
         "required": ["action"],
     },

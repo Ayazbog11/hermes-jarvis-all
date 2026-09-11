@@ -31,7 +31,9 @@
 | «Переименуй scan_0012.pdf в договор-аренды.pdf» | `move` (существующее не перезаписывается) |
 | «Удали старые черновики» | `trash` — только в Корзину macOS, необратимого удаления в хранилище нет |
 | «Открой проект atlas, почини тест и закоммить» | обычные `read_file`/`patch`/`terminal` в `projects/atlas` |
-| «Подключи Документы / iCloud / Obsidian» | `vault_manage connect what=documents\|icloud\|notes-obsidian` — Obsidian-vault находится сам |
+| «Подключи Документы / iCloud / Obsidian» | `vault_manage connect what=documents\|icloud\|notes-obsidian` — Obsidian-vault находится сам (Windows/macOS/Linux, включая snap/flatpak) |
+| «Запиши в Obsidian заметку “Идея” про X» | `vault_manage obsidian_note title="Идея" content="X" tags=idea` — YAML-frontmatter, файл в vault-е |
+| «Добавь в сегодняшнюю дневную заметку, что…» | `vault_manage obsidian_note daily=true content=…` — папка/имя по `.obsidian/daily-notes.json`, если настроено |
 
 Запись возможна **только внутри** `~/JARVIS` и подключённых проектов; файлы с секретами (`.env`, ключи) через хранилище не создаются.
 Все операции пишутся в журнал базы (`jarvis brain log`).
@@ -58,6 +60,24 @@
 Индекс живёт в той же базе, что и память (`brain.db`, таблицы `files`/`file_chunks` + FTS5). Обновляется в фоне каждые
 10 минут (`vault_scan_minutes`), при добавлении проекта, по `jarvis vault reindex` и когда JARVIS сам вызывает
 `vault_manage reindex` («я только что положил файл»).
+
+## Гибридный поиск (BM25 + смысл)
+
+Обзор open-source RAG-проектов 2026 года (LightRAG, txtai, AnythingLLM, Khoj — см. `docs/RESEARCH.md`, Round 5)
+показал общий паттерн: чистый полнотекстовый поиск (BM25/FTS5, тот, что был в JARVIS с 1.8) не находит
+перефразировки — «сколько денег дадут в отпуске» не совпадёт словами с «отпускные выплачиваются вместе с
+зарплатой», хотя это один и тот же вопрос. Поэтому `vault_search`/`jarvis vault search` теперь **гибридные**:
+
+1. BM25 по точным словам — как раньше, без изменений в поведении;
+2. если локально установлена и запущена Ollama с моделью `nomic-embed-text` (`jarvis ollama pull nomic-embed-text` —
+   один раз, ~270 МБ, дальше офлайн), куски файлов дополнительно ищутся по смысловой близости эмбеддингов;
+3. оба списка объединяются через **Reciprocal Rank Fusion** (тот же алгоритм, что в Elasticsearch/OpenSearch)
+   — без слепого доверия одной шкале очков.
+
+Без Ollama всё работает ровно как раньше (чистый BM25) — это полностью опциональная надстройка, не новая
+обязательная зависимость. Эмбеддинги считаются локально (never uploaded anywhere), хранятся в той же `brain.db`
+(таблица `file_embeddings`), досчитываются понемногу при каждом `reindex`, не блокируя обычную индексацию текста.
+`jarvis vault status` показывает `semantic_search: true/false` и число уже посчитанных эмбеддингов.
 
 ## Как этим пользуется агент
 
@@ -88,7 +108,30 @@ jarvis vault connect icloud|desktop|documents|downloads|notes-obsidian
 jarvis vault move <файл> <папка|новое имя>
 jarvis vault trash <файл>          в Корзину
 jarvis vault pending               файлы, ещё не разобранные в базу знаний
+jarvis vault note "Заголовок" --content "текст" --tags идея,проект   создать заметку Obsidian (frontmatter)
+jarvis vault note --daily --content "что сделано сегодня"            дописать в дневную заметку (папка/формат — из .obsidian/daily-notes.json)
+jarvis vault obsidian-list         показать все найденные Obsidian-vault-ы (если их несколько)
 ```
+
+## Интеграция с Obsidian
+
+`jarvis vault connect notes-obsidian` находит и подключает Obsidian-vault **на любой ОС** — раньше поиск работал
+только на macOS (`~/Library/Application Support/obsidian/obsidian.json`), теперь так же на Windows
+(`%APPDATA%\obsidian\obsidian.json`) и Linux (`~/.config/obsidian/obsidian.json`, плюс snap- и flatpak-упаковки).
+Подключённый vault становится `projects/Obsidian` — обычным проектом хранилища: индексируется, ищется, читается.
+
+Дополнительно JARVIS умеет **писать заметки по конвенциям Obsidian**, а не просто дописывать текст в файл:
+- `vault_manage obsidian_note` (или `jarvis vault note`) создаёт заметку с YAML-frontmatter (`created`, `tags`) —
+  так теги сразу видны в панели тегов Obsidian, а свойства — в inline-properties;
+  `[[вики-ссылки]]` в тексте не экранируются и работают как обычно;
+- с `daily=true` JARVIS определяет папку и формат имени файла из `.obsidian/daily-notes.json` (если плагин Daily
+  Notes включён и настроен) и **дописывает** в сегодняшнюю заметку заголовком-временем, а не создаёт новый файл;
+- если Obsidian ещё не подключён, заметка всё равно создаётся — в `inbox/` хранилища JARVIS — и её будет видно,
+  как только вы подключите vault и перенесёте файл.
+
+Если у вас несколько vault-ов, `jarvis vault obsidian-list` покажет все (путь и время последнего открытия);
+подключается пока только «последний открытый» — если нужен другой, попросите JARVIS переподключить, указав путь
+через обычный `vault_manage add`.
 
 Настройки (`config.yaml → plugins.jarvis-brain`): `vault_dir` (другая папка; или `JARVIS_VAULT_DIR`), `vault_context`
 (подмешивать ли в контекст), `vault_scan_minutes`.

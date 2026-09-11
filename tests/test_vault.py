@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import zipfile
 
 import pytest
@@ -274,3 +275,122 @@ def test_connect_obsidian_lookup(brain, tmp_path, monkeypatch):
     assert any("note.md" in h["rel"] for h in v.search("сделать JARVIS умнее"))
     with pytest.raises(ValueError):
         v.connect("dropbox")
+
+
+def test_semantic_search_disabled_by_default_without_ollama(brain, tmp_path):
+    """Без Ollama гибридный поиск незаметно деградирует до чистого BM25 — не падает и не зависает."""
+    v, root = _prep(brain, tmp_path)
+    v.write("inbox/договор.md", "Договор с Acme истекает 31 декабря 2026 года")
+    v.reindex()
+    st = v.stats()
+    assert st["semantic_search"] is False  # в CI/без Ollama
+    hits = v.search("договор Acme")
+    assert any("договор.md" in h["rel"] for h in hits)
+
+
+def test_ensure_embeddings_noop_without_ollama(brain, tmp_path):
+    v, root = _prep(brain, tmp_path)
+    v.write("inbox/a.md", "текст без эмбеддингов")
+    v.reindex()
+    st = v.ensure_embeddings()
+    assert st == {"embedded": 0, "available": False}
+
+
+def test_hybrid_search_finds_semantic_match_without_keyword_overlap(brain, tmp_path, monkeypatch):
+    """Гибрид (BM25 + эмбеддинги) находит смысловое совпадение, даже если слова не пересекаются —
+    имитируем Ollama простым фейковым эмбеддером (кластер 'a' vs кластер 'b')."""
+    v, root = _prep(brain, tmp_path)
+    v.write("inbox/vacation.md", "Отпускные выплачиваются вместе с зарплатой за июнь.")
+    v.write("inbox/unrelated.md", "Рецепт пирога: мука, сахар, яйца.")
+    v.reindex()
+
+    emb_mod = brain.embeddings
+    monkeypatch.setattr(emb_mod, "is_available", lambda force_recheck=False: True)
+
+    def fake_embed(texts):
+        vac_words = {"отпуск", "отпускные", "выплачиваются", "зарплатой", "деньги", "дадут"}
+        out = []
+        for t in texts:
+            words = set(t.lower().split())
+            out.append([1.0, 0.0] if words & vac_words else [0.0, 1.0])
+        return out
+    monkeypatch.setattr(emb_mod, "embed", fake_embed)
+
+    st = v.ensure_embeddings()
+    assert st["embedded"] > 0
+
+    hits = v.search("сколько денег мне дадут в отпуске")  # ни одного общего слова с vacation.md
+    assert any("vacation.md" in h["rel"] for h in hits)
+
+
+def test_semantic_env_toggle_disables_hybrid(brain, tmp_path, monkeypatch):
+    v, root = _prep(brain, tmp_path)
+    monkeypatch.setenv("JARVIS_VAULT_SEMANTIC", "0")
+    assert v._cfg_semantic_enabled() is False
+    monkeypatch.setenv("JARVIS_VAULT_SEMANTIC", "1")
+    assert v._cfg_semantic_enabled() is True
+
+
+def test_obsidian_config_candidates_cross_platform(brain, tmp_path, monkeypatch):
+    """На каждой ОС ищем obsidian.json в правильном системном месте (не только macOS)."""
+    v, _ = _prep(brain, tmp_path)
+    vault_mod = sys.modules["plug_jarvis_brain.vault"]
+
+    monkeypatch.setattr(vault_mod.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+    win_paths = [str(p) for p in v._obsidian_config_candidates()]
+    assert any("AppData" in p and "obsidian.json" in p for p in win_paths)
+
+    monkeypatch.setattr(vault_mod.sys, "platform", "linux")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    lin_paths = [str(p) for p in v._obsidian_config_candidates()]
+    assert any(".config/obsidian/obsidian.json" in p for p in lin_paths)
+    assert any("snap" in p for p in lin_paths)  # snap-упаковка учтена
+
+
+def test_obsidian_note_creates_frontmatter_and_daily(brain, tmp_path):
+    v, root = _prep(brain, tmp_path)
+    out = _j(brain.tool_vault_manage({"action": "obsidian_note", "title": "Идея", "content": "Текст.", "tags": "a, b"}))
+    assert out["success"] and out["vault"] == "JARVIS"
+    text = (root / "inbox" / "Идея.md").read_text(encoding="utf-8")
+    assert "tags:" in text and "- a" in text and "# Идея" in text and "Текст." in text
+
+    out2 = _j(brain.tool_vault_manage({"action": "obsidian_note", "daily": True, "content": "Первая запись"}))
+    assert out2["success"] and out2["daily"]
+    first_path = out2["path"]
+    out3 = _j(brain.tool_vault_manage({"action": "obsidian_note", "daily": True, "content": "Вторая запись"}))
+    assert out3["path"] == first_path and not out3["created"]
+    text2 = open(first_path, encoding="utf-8").read()
+    assert "Первая запись" in text2 and "Вторая запись" in text2
+
+    # без title и без daily — ошибка, а не безымянный файл
+    err = _j(brain.tool_vault_manage({"action": "obsidian_note"}))
+    assert not err["success"]
+
+
+def test_obsidian_note_uses_connected_vault_daily_settings(brain, tmp_path, monkeypatch):
+    v, root = _prep(brain, tmp_path)
+    obs = tmp_path / "ObsVault"; obs.mkdir()
+    (obs / ".obsidian").mkdir()
+    (obs / ".obsidian" / "daily-notes.json").write_text(
+        json.dumps({"folder": "Daily", "format": "YYYY-MM-DD"}), encoding="utf-8")
+    monkeypatch.setattr(v, "_find_obsidian", staticmethod(lambda: str(obs)))
+    v.connect("notes-obsidian")
+    res = v.obsidian_note(daily=True, content="через настоящий vault")
+    assert res["vault"] == "Obsidian"
+    assert (obs / "Daily").is_dir()
+    assert any(f.name.endswith(".md") for f in (obs / "Daily").iterdir())
+
+
+def test_list_obsidian_vaults(brain, monkeypatch, tmp_path):
+    Vault = brain.Vault
+    cfg_dir = tmp_path / "obsidian_cfg"; cfg_dir.mkdir()
+    vault_a = tmp_path / "VaultA"; vault_a.mkdir()
+    vault_b = tmp_path / "VaultB"; vault_b.mkdir()
+    (cfg_dir / "obsidian.json").write_text(json.dumps({"vaults": {
+        "1": {"path": str(vault_a), "ts": 100},
+        "2": {"path": str(vault_b), "ts": 200},
+    }}), encoding="utf-8")
+    monkeypatch.setattr(Vault, "_obsidian_config_candidates", classmethod(lambda cls: [cfg_dir / "obsidian.json"]))
+    vaults = Vault.list_obsidian_vaults()
+    assert [v["name"] for v in vaults] == ["VaultB", "VaultA"]  # отсортированы по недавности

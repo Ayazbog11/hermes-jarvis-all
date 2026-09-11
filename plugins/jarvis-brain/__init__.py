@@ -552,6 +552,15 @@ def tool_vault_manage(args: dict, **kwargs) -> str:
                 return _err("Нужен file_id (из pending/list)")
             v.mark_summarized(int(args["file_id"]), args.get("note_id"))
             return _ok(file_id=int(args["file_id"]))
+        if a == "obsidian_list":
+            return _ok(vaults=v.list_obsidian_vaults())
+        if a == "obsidian_note":
+            if not args.get("daily") and not args.get("title"):
+                return _err("Нужен title (или daily=true для ежедневной заметки)")
+            res = v.obsidian_note(title=args.get("title") or "", content=str(args.get("content") or ""),
+                                   tags=args.get("tags") or "", folder=args.get("folder"), daily=bool(args.get("daily")))
+            _hud("vault.update", {"action": "obsidian_note", "name": res["rel"]})
+            return _ok(**res)
         return _err(f"Неизвестное действие {a}")
     except (OSError, ValueError, PermissionError) as e:
         return _err(str(e))

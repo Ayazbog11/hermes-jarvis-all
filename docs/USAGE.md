@@ -119,7 +119,9 @@
 - «Открой проект atlas и объясни, как там сделана авторизация» · «Запусти тесты в проекте atlas» → `projects/atlas` — обычные `read_file`/`terminal`
 - «Я положил в inbox презентацию — сделай из неё тезисы и сохрани рядом» · «Что нового в хранилище?» *(новые файлы JARVIS замечает сам и записывает их суть в память)*
 - «Разложи inbox по папкам» · «Переименуй scan_0012.pdf в договор-аренды» · «Удали черновики» *(только в Корзину)*
-- «Подключи мои Документы / iCloud / Obsidian» → `jarvis vault connect documents|icloud|notes-obsidian`
+- «Подключи мои Документы / iCloud / Obsidian» → `jarvis vault connect documents|icloud|notes-obsidian` (Obsidian находится сам на Windows/macOS/Linux)
+- «Запиши в Obsidian заметку про X» → `jarvis vault note "X" --content "…" --tags идея` (YAML-frontmatter, как заметки самого Obsidian)
+- «Добавь в дневник, что…» → `jarvis vault note --daily --content "…"` (папка/формат — из настроек Daily Notes, если есть)
 
 ### Экран
 - «Что у меня на экране?» · «Посмотри сюда, что это за ошибка?» · «Переведи текст на экране» → скриншот снимается сам, модель сразу вызывает `vision_analyze`

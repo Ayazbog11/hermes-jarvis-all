@@ -53,6 +53,8 @@ RECOMMENDED = [
     ("qwen3:8b", "универсальная, быстрая, хороша на CPU/8ГБ+ VRAM"),
     ("llama3.1:8b", "альтернатива, чуть слабее в тулкол-режиме, чем qwen3"),
     ("qwen2.5vl:7b", "модель с поддержкой зрения (для auxiliary.vision — распознавание экрана/фото)"),
+    ("nomic-embed-text", "маленькая (~270 МБ) модель эмбеддингов — включает семантический поиск по хранилищу "
+                         "(jarvis vault): находит документы по смыслу, а не только по совпадению слов"),
 ]
 
 
@@ -142,9 +144,15 @@ def cmd_status(_args: argparse.Namespace) -> int:
         models = list_models()
         if models:
             print(f"Скачанные модели ({len(models)}):")
+            names = set()
             for m in models:
                 size_gb = (m.get("size") or 0) / (1024 ** 3)
                 print(f"  - {m.get('name', '?')}  ({size_gb:.1f} ГБ)")
+                names.add(m.get("name", "").split(":")[0])
+            if "nomic-embed-text" in names:
+                print("Семантический поиск по хранилищу (jarvis vault) включён (nomic-embed-text найдена).")
+            else:
+                print("Семантический поиск по хранилищу выключен — нет nomic-embed-text (jarvis ollama pull nomic-embed-text).")
         else:
             print("Моделей ещё нет. Смотрите: jarvis ollama recommend")
     current_provider = hermes_config_get("model.provider")
@@ -177,6 +185,8 @@ def cmd_recommend(_args: argparse.Namespace) -> int:
     print("\nПосле скачивания:")
     print("  jarvis ollama use qwen3:8b            # как основную модель чата")
     print("  jarvis ollama use qwen2.5vl:7b --vision  # как отдельную модель для зрения")
+    print("  jarvis ollama pull nomic-embed-text       # включает семантический поиск по хранилищу (jarvis vault),")
+    print("                                             # ничего прописывать в конфиг не нужно — находится сама")
     return 0
 
 

@@ -137,7 +137,7 @@ J.A.R.V.I.S. on Hermes Agent (Windows)
   jarvis brain [stats|review|export|diary|profile|log|backup|restore|sql]   база знаний
   jarvis brain import    первичный импорт: контакты, календарь, заметки → карточки в базе
   jarvis shortcuts       быстрые команды: ярлыки на Рабочем столе + «Отправить» в Проводнике
-  jarvis vault [status|add <папка>|remove|search <слова>|list|tree|reindex|open]   хранилище файлов и проектов (%USERPROFILE%\JARVIS)
+  jarvis vault [status|add <папка>|remove|search <слова>|list|tree|reindex|open|connect <источник>|note [заголовок]|obsidian-list]   хранилище файлов и проектов (%USERPROFILE%\JARVIS); connect notes-obsidian подключает Obsidian (Windows/Linux/macOS)
   jarvis brief           утренний брифинг прямо сейчас
   jarvis selftest [--fix] проверить все win_* инструменты и права на этой машине (без LLM)
   jarvis heartbeat       одна проверка «нужно ли что-то сказать?» (для Планировщика заданий)

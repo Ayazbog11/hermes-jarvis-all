@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.10.0 — Интеграция с Obsidian (Windows/Linux), гибридный поиск (BM25 + локальные эмбеддинги)
+
+- **Интеграция с Obsidian на Windows и Linux** — раньше `jarvis vault connect notes-obsidian` находил
+  vault только на macOS (`~/Library/Application Support/obsidian/obsidian.json`); теперь так же на
+  Windows (`%APPDATA%\obsidian`) и Linux (`~/.config/obsidian`, включая snap- и flatpak-упаковки).
+  `jarvis vault obsidian-list` показывает все найденные vault-ы, если их несколько.
+- **Запись заметок по конвенциям Obsidian**, а не голым текстом: `vault_manage obsidian_note` /
+  `jarvis vault note "Заголовок" --content "..." --tags a,b [--daily]` создаёт заметку с
+  YAML-frontmatter (`created`, `tags`); с `--daily` дописывает в сегодняшнюю ежедневную заметку,
+  определяя папку и формат имени файла из настроек самого пользователя
+  (`.obsidian/daily-notes.json`), а не по жёстко зашитому шаблону.
+- **Гибридный поиск: BM25 + локальные эмбеддинги.** И `vault_search` (файлы в хранилище), и
+  `brain_recall` (база знаний) теперь ищут не только по точным словам, но и — если локально
+  установлена Ollama с моделью `nomic-embed-text` (`jarvis ollama pull nomic-embed-text`, ~270 МБ,
+  один раз, дальше офлайн) — по смысловой близости, находя перефразировки без общих слов с
+  вопросом. Оба ранжирования объединяются через Reciprocal Rank Fusion (алгоритм по умолчанию в
+  Elasticsearch/OpenSearch). Полностью опционально: без Ollama всё работает как раньше, чистым
+  BM25/FTS5 — ни новой обязательной зависимости, ни изменения поведения по умолчанию. Эмбеддинги
+  считаются локально, хранятся в той же `brain.db` (новые таблицы `file_embeddings`/
+  `note_embeddings`), досчитываются понемногу при `jarvis vault reindex` и ночной ревизии
+  (`brain_review maintain`). Подробности и обзор ~100 похожих open-source проектов, на основании
+  которых сделан выбор именно этой архитектуры — `docs/RESEARCH.md` (Раунд 5), `docs/BRAIN.md`,
+  `docs/VAULT.md`.
+- Тесты: +4 файла/классов новых тестов (Obsidian cross-platform discovery, гибридный поиск в
+  vault и в базе знаний, инвалидация устаревших эмбеддингов при изменении заметки) — 194 passed,
+  6 skipped, ruff чистый.
+
 ## 1.9.0 — Google Calendar, управление ИИ-моделями (ключи/зрение/Ollama), лицензия, безопасность CI
 
 - **Google Calendar** — единый календарь на macOS/Windows/Linux вместо Outlook COM (Windows) /

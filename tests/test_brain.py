@@ -49,6 +49,49 @@ def test_remember_recall_dedupe(brain):
     assert _j(brain.tool_brain_recall({"query": "python тесты"}))["count"] == 0
 
 
+def test_recall_hybrid_semantic_without_keyword_overlap(brain, monkeypatch):
+    """С доступной Ollama+nomic-embed-text recall находит смысловое совпадение без общих слов."""
+    b = brain.brain()
+    b.remember("Ежегодная компенсация во время каникул перечисляется отдельно.", kind="fact")
+    b.remember("Рецепт пирога: мука сахар яйца.", kind="fact")
+
+    # без Ollama — как раньше, чисто по словам, ничего не находит (проверяем, что не падает)
+    assert b.recall("сколько денег дадут в отпуске") == []
+
+    emb_mod = brain.embeddings
+    monkeypatch.setattr(emb_mod, "is_available", lambda force_recheck=False: True)
+
+    def fake_embed(texts):
+        vac = {"компенсация", "каникул", "перечисляется", "отдельно", "деньги", "дадут", "отпуске"}
+        return [[1.0, 0.0] if set(t.lower().split()) & vac else [0.0, 1.0] for t in texts]
+    monkeypatch.setattr(emb_mod, "embed", fake_embed)
+
+    st = b.ensure_note_embeddings()
+    assert st["embedded"] == 2
+
+    hits = b.recall("сколько денег дадут в отпуске")
+    assert hits and "компенсация" in hits[0]["content"]
+
+
+def test_ensure_note_embeddings_noop_without_ollama(brain):
+    b = brain.brain()
+    b.remember("что-то без эмбеддингов", kind="fact")
+    assert b.ensure_note_embeddings() == {"embedded": 0, "available": False}
+
+
+def test_update_note_content_invalidates_stale_embedding(brain, monkeypatch):
+    b = brain.brain()
+    res = b.remember("Исходный текст заметки", kind="fact")
+    note_id = res["id"]
+    emb_mod = brain.embeddings
+    monkeypatch.setattr(emb_mod, "is_available", lambda force_recheck=False: True)
+    monkeypatch.setattr(emb_mod, "embed", lambda texts: [[1.0, 0.0] for _ in texts])
+    b.ensure_note_embeddings()
+    assert b._conn.execute("SELECT COUNT(*) FROM note_embeddings WHERE note_id=?", (note_id,)).fetchone()[0] == 1
+    b.update_note(note_id, content="Совсем другой текст")
+    assert b._conn.execute("SELECT COUNT(*) FROM note_embeddings WHERE note_id=?", (note_id,)).fetchone()[0] == 0
+
+
 def test_entities_and_relations(brain):
     brain.tool_brain_remember({"content": "Анна — руководитель проекта Atlas", "kind": "person", "entity": "Анна", "tags": "work"})
     brain.tool_brain_remember({"content": "Atlas пишется на Go и деплоится в k8s", "kind": "project", "entity": "Atlas"})

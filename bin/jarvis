@@ -96,7 +96,7 @@ J.A.R.V.I.S. on Hermes Agent
   jarvis brain [stats|review|export|diary|profile|log|backup|restore|sql]   база знаний
   jarvis brain import    первичный импорт: контакты, календарь, заметки → карточки в базе
   jarvis shortcuts       быстрые команды Siri/Shortcuts: «Спросить JARVIS», «В хранилище JARVIS» (Finder), «Замолчать», брифинг
-  jarvis vault [status|add <папка>|remove|search <слова>|list|tree|reindex|open]   хранилище файлов и проектов (~/JARVIS)
+  jarvis vault [status|add <папка>|remove|search <слова>|list|tree|reindex|open|connect <источник>|note [заголовок]|obsidian-list]   хранилище файлов и проектов (~/JARVIS); connect notes-obsidian подключает Obsidian (Windows/Linux/macOS)
   jarvis brief           утренний брифинг прямо сейчас
   jarvis selftest [--fix] проверить все инструменты управления системой и права на этой машине (без LLM)
   jarvis heartbeat       одна проверка «нужно ли что-то сказать?» (для cron/Shortcuts)

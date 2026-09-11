@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import sqlite3
+import struct
 import subprocess
 import sys
 import threading
@@ -32,9 +33,11 @@ import time
 from pathlib import Path
 
 try:
+    from . import embeddings as emb
     from .db import Brain, redact  # внутри плагина
 except ImportError:  # запуск как скрипт: python3 vault.py …
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import embeddings as emb  # type: ignore
     from db import Brain, redact  # type: ignore
 
 # На Windows stdout/stderr при перенаправлении в файл/пайп (не TTY) используют системную
@@ -84,6 +87,10 @@ CREATE TABLE IF NOT EXISTS file_chunks(
 CREATE INDEX IF NOT EXISTS file_chunks_file ON file_chunks(file_id);
 CREATE TABLE IF NOT EXISTS vault_sources(
     id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, path TEXT NOT NULL, added_at TEXT, note TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS file_embeddings(
+    chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vector BLOB NOT NULL, created_at TEXT);
+CREATE TRIGGER IF NOT EXISTS file_chunks_embed_cleanup AFTER DELETE ON file_chunks BEGIN
+    DELETE FROM file_embeddings WHERE chunk_id = old.id; END;
 """
 FTS_SCHEMA = """
 CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
@@ -405,6 +412,13 @@ class Vault:
             self._conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('vault_last_scan', ?)", (now(),))
             if stats["indexed"] or stats["removed"]:
                 self.brain._log("system", "vault_reindex", "files", None, after=stats)
+        if self._cfg_semantic_enabled():
+            try:
+                # небольшими порциями — не блокируем reindex, если файлов много; следующий проход досчитает остальное
+                emb_stats = self.ensure_embeddings(batch=100)
+                stats["embedded"] = emb_stats.get("embedded", 0)
+            except Exception:  # эмбеддинги — best-effort, никогда не должны ронять reindex
+                stats["embedded"] = 0
         return stats
 
     # поиск -----------------------------------------------------------------
@@ -416,11 +430,8 @@ class Vault:
         # каждое слово с префиксом; OR — чтобы находить документы даже по части слов
         return " OR ".join(f'"{w.replace(chr(34), "")}"*' for w in words[:12])
 
-    def search(self, query: str, limit: int = 8, prefix: str | None = None) -> list[dict]:
-        """Куски файлов, релевантные запросу: path, rel, line, snippet, score."""
-        q = (query or "").strip()
-        if not q:
-            return []
+    def _keyword_rows(self, q: str, prefix: str | None, pool: int) -> list[sqlite3.Row]:
+        """BM25 (FTS5) поиск по ключевым словам; LIKE — запасной путь, если FTS недоступен/ничего не нашёл."""
         with self._lock:
             c = self._conn
             rows: list[sqlite3.Row] = []
@@ -436,7 +447,7 @@ class Vault:
                         sql += "AND f.rel LIKE ? "
                         params.append(prefix.rstrip("/") + "/%")
                     sql += "ORDER BY score LIMIT ?"
-                    params.append(limit * 3)
+                    params.append(pool)
                     try:
                         rows = c.execute(sql, params).fetchall()
                     except sqlite3.OperationalError:
@@ -454,21 +465,111 @@ class Vault:
                     sql += "AND f.rel LIKE ? "
                     params.append(prefix.rstrip("/") + "/%")
                 sql += "LIMIT ?"
-                params.append(limit * 3)
+                params.append(pool)
                 rows = c.execute(sql, params).fetchall()
+        return rows
+
+    def _semantic_rows(self, q: str, prefix: str | None, pool: int) -> list[sqlite3.Row]:
+        """Куски, ранжированные по косинусной близости эмбеддинга запроса (best-effort, требует Ollama).
+
+        Линейный перебор по чистому Python — сознательный выбор для личного хранилища (см. embeddings.py):
+        никаких C-расширений/дополнительных зависимостей, которые могут не собраться на части платформ.
+        """
+        if not emb.is_available():
+            return []
+        qvec_list = emb.embed([q])
+        if not qvec_list:
+            return []
+        qvec = qvec_list[0]
+        with self._lock:
+            sql = ("SELECT fc.id, fc.file_id, fc.no, fc.line_from, fc.content, f.path, f.rel, f.name, f.source, "
+                   "fe.vector AS vector FROM file_embeddings fe JOIN file_chunks fc ON fc.id = fe.chunk_id "
+                   "JOIN files f ON f.id = fc.file_id WHERE f.status='ok' ")
+            params: list = []
+            if prefix:
+                sql += "AND f.rel LIKE ? "
+                params.append(prefix.rstrip("/") + "/%")
+            try:
+                candidates = self._conn.execute(sql, params).fetchall()
+            except sqlite3.OperationalError:
+                return []
+        scored = []
+        for r in candidates:
+            try:
+                sim = emb.cosine(qvec, emb.unpack(r["vector"]))
+            except (struct.error, ValueError):
+                continue
+            if sim > 0.35:  # ниже — почти всегда шум для nomic-embed-text
+                scored.append((sim, r))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        return [r for _, r in scored[:pool]]
+
+    def search(self, query: str, limit: int = 8, prefix: str | None = None) -> list[dict]:
+        """Куски файлов, релевантные запросу: гибрид BM25 (точные слова) + локальные эмбеддинги через Ollama
+        (смысл/перефразировки), если Ollama доступна — объединено через Reciprocal Rank Fusion. Возвращает
+        path, rel, line, snippet, score. Без Ollama — как раньше, чистый BM25/FTS5."""
+        q = (query or "").strip()
+        if not q:
+            return []
+        pool = max(limit * 3, 20)
+        kw_rows = self._keyword_rows(q, prefix, pool)
+        sem_rows = self._semantic_rows(q, prefix, pool) if self._cfg_semantic_enabled() else []
+        by_id: dict[int, sqlite3.Row] = {}
+        rankings: list[list[int]] = []
+        for rows in (kw_rows, sem_rows):
+            order = []
+            for r in rows:
+                by_id.setdefault(r["id"], r)
+                order.append(r["id"])
+            if order:
+                rankings.append(order)
+        if not rankings:
+            return []
+        fused = rankings[0] if len(rankings) == 1 else [cid for cid, _ in emb.rrf_fuse(rankings)]
         # не больше 2 кусков на файл — иначе один большой файл вытесняет остальные
         out: list[dict] = []
         per_file: dict[int, int] = {}
-        for r in rows:
+        for cid in fused:
+            r = by_id[cid]
             if per_file.get(r["file_id"], 0) >= 2:
                 continue
             per_file[r["file_id"]] = per_file.get(r["file_id"], 0) + 1
+            snip = r["snip"] if "snip" in r.keys() else re.sub(r"\s+", " ", r["content"])[:240]
+            score = -float(r["score"]) if ("score" in r.keys() and r["score"]) else 0.0
             out.append({"file_id": r["file_id"], "path": r["path"], "rel": r["rel"], "name": r["name"], "source": r["source"],
-                        "line": r["line_from"], "chunk": r["no"], "snippet": re.sub(r"\s+", " ", r["snip"]).strip()[:300],
-                        "score": round(-float(r["score"]), 2) if r["score"] else 0.0})
+                        "line": r["line_from"], "chunk": r["no"], "snippet": re.sub(r"\s+", " ", snip).strip()[:300],
+                        "score": round(score, 2)})
             if len(out) >= limit:
                 break
         return out
+
+    @staticmethod
+    def _cfg_semantic_enabled() -> bool:
+        return os.environ.get("JARVIS_VAULT_SEMANTIC", "1") != "0"
+
+    # ── семантический индекс (эмбеддинги через Ollama, best-effort) ────────
+    def ensure_embeddings(self, batch: int = 50) -> dict:
+        """Досчитать эмбеддинги для кусков, у которых их ещё нет. Ничего не делает, если Ollama недоступна
+        или модель эмбеддингов не скачана — вызывается периодически из фонового сканирования, не блокирует
+        обычную индексацию текста."""
+        if not emb.is_available():
+            return {"embedded": 0, "available": False}
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT fc.id, fc.content FROM file_chunks fc LEFT JOIN file_embeddings fe ON fe.chunk_id = fc.id "
+                "JOIN files f ON f.id = fc.file_id WHERE fe.chunk_id IS NULL AND f.status='ok' LIMIT ?", (batch,)
+            ).fetchall()
+        if not rows:
+            return {"embedded": 0, "available": True}
+        vecs = emb.embed([r["content"] for r in rows])
+        if not vecs:
+            return {"embedded": 0, "available": True, "note": "модель эмбеддингов не ответила"}
+        with self._lock:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO file_embeddings(chunk_id, model, vector, created_at) VALUES (?,?,?,?)",
+                [(r["id"], emb.EMBED_MODEL, emb.pack(v), now()) for r, v in zip(rows, vecs, strict=True)])
+            self._conn.commit()
+        return {"embedded": len(rows), "available": True}
 
     def read(self, path: str, offset: int = 0, limit: int = 6000) -> dict:
         """Текст файла (с конвертацией PDF/DOCX), кусками по limit символов. Путь — абсолютный или относительно хранилища."""
@@ -623,15 +724,150 @@ class Vault:
         return self.add_source(path, name)
 
     @staticmethod
-    def _find_obsidian() -> str | None:
-        cfg = Path("~/Library/Application Support/obsidian/obsidian.json").expanduser()
-        try:
-            data = json.loads(cfg.read_text(encoding="utf-8"))
+    def _obsidian_config_candidates() -> list[Path]:
+        """Пути к obsidian.json (реестр открытых vault-ов) на macOS/Windows/Linux.
+
+        Формат файла одинаковый на всех платформах — отличается только системная папка
+        настроек приложения (см. https://help.obsidian.md, «How Obsidian stores data»).
+        """
+        candidates: list[Path] = []
+        if sys.platform == "darwin":
+            candidates.append(Path("~/Library/Application Support/obsidian/obsidian.json"))
+        elif sys.platform == "win32":
+            appdata = os.environ.get("APPDATA")
+            if appdata:
+                candidates.append(Path(appdata) / "obsidian" / "obsidian.json")
+            candidates.append(Path("~/AppData/Roaming/obsidian/obsidian.json"))
+        else:  # Linux и прочие *nix, включая snap-упаковку
+            xdg = os.environ.get("XDG_CONFIG_HOME")
+            if xdg:
+                candidates.append(Path(xdg) / "obsidian" / "obsidian.json")
+            candidates.append(Path("~/.config/obsidian/obsidian.json"))
+            candidates.append(Path("~/snap/obsidian/current/.config/obsidian/obsidian.json"))
+            candidates.append(Path("~/.var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json"))  # flatpak
+        return [c.expanduser() for c in candidates]
+
+    @classmethod
+    def _find_obsidian(cls) -> str | None:
+        for cfg in cls._obsidian_config_candidates():
+            try:
+                data = json.loads(cfg.read_text(encoding="utf-8"))
+            except (OSError, ValueError, KeyError):
+                continue
             vaults = data.get("vaults") or {}
             best = max(vaults.values(), key=lambda v: v.get("ts", 0)) if vaults else None
-            return best["path"] if best and Path(best["path"]).is_dir() else None
-        except (OSError, ValueError, KeyError):
-            return None
+            if best and Path(best["path"]).is_dir():
+                return best["path"]
+        return None
+
+    @classmethod
+    def list_obsidian_vaults(cls) -> list[dict]:
+        """Все известные Obsidian-vault-ы (не только самый недавний), для выбора пользователем."""
+        out: list[dict] = []
+        for cfg in cls._obsidian_config_candidates():
+            try:
+                data = json.loads(cfg.read_text(encoding="utf-8"))
+            except (OSError, ValueError, KeyError):
+                continue
+            for v in (data.get("vaults") or {}).values():
+                p = v.get("path")
+                if p and Path(p).is_dir():
+                    out.append({"path": p, "name": Path(p).name, "ts": v.get("ts", 0)})
+            break  # первый найденный файл конфигурации — этого достаточно
+        out.sort(key=lambda v: v["ts"], reverse=True)
+        return out
+
+    def _obsidian_vault_root(self) -> Path | None:
+        """Корень подключённого Obsidian vault-а (projects/Obsidian), если он подключён через connect()."""
+        for r in self.sources():
+            if r["name"] == "Obsidian":
+                return Path(r["path"]).resolve()
+        p = self.root / "projects" / "Obsidian"
+        return p.resolve() if p.is_dir() else None
+
+    def _daily_notes_settings(self, vault_root: Path) -> dict:
+        """Читает .obsidian/daily-notes.json (папка/формат имени/шаблон), best-effort."""
+        cfg_path = vault_root / ".obsidian" / "daily-notes.json"
+        try:
+            return json.loads(cfg_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    @staticmethod
+    def _moment_like_date(fmt: str, when: dt.date) -> str:
+        """Минимальная поддержка Moment.js-формата дат Obsidian (YYYY/MM/DD/dddd и т.п.) без внешних зависимостей."""
+        repl = {
+            "YYYY": "%Y", "YY": "%y", "MMMM": "%B", "MMM": "%b", "MM": "%m",
+            "DD": "%d", "dddd": "%A", "ddd": "%a",
+        }
+        out = fmt
+        for token, strftime_code in repl.items():
+            out = out.replace(token, strftime_code)
+        try:
+            return when.strftime(out)
+        except ValueError:
+            return when.isoformat()
+
+    def obsidian_note(self, title: str = "", content: str = "", tags: str = "", folder: str | None = None,
+                       daily: bool = False) -> dict:
+        """Создать/дополнить заметку по конвенциям Obsidian: YAML-frontmatter + место по правилам vault-а.
+
+        - daily=True: дописывает в сегодняшнюю ежедневную заметку — папка/формат имени берутся
+          из .obsidian/daily-notes.json, если настроено, иначе YYYY-MM-DD.md в корне vault-а.
+        - иначе: обычная заметка `<title>.md`, опционально в указанной folder.
+        Заметка создаётся внутри подключённого Obsidian vault-а (`vault_manage connect what=notes-obsidian`);
+        если он не подключён — пишет в хранилище JARVIS напрямую (в inbox/).
+        """
+        vault_root = self._obsidian_vault_root()
+        today = dt.date.today()
+        tag_list = [t.strip().lstrip("#") for t in tags.split(",") if t.strip()]
+
+        if daily:
+            settings = self._daily_notes_settings(vault_root) if vault_root else {}
+            name = self._moment_like_date(settings.get("format") or "YYYY-MM-DD", today)
+            rel_dir = settings.get("folder") or folder or ""
+        else:
+            safe = re.sub(r'[\\/:*?"<>|]', "-", title).strip() or f"Заметка {today.isoformat()}"
+            name = safe
+            rel_dir = folder or ("" if vault_root else "inbox")
+
+        rel_in_vault = f"{rel_dir.rstrip('/')}/{name}.md" if rel_dir else f"{name}.md"
+        # write()/resolve_inside работают от корня хранилища self.root — если это отдельный
+        # Obsidian vault, подключённый как projects/Obsidian, добавляем этот префикс.
+        if vault_root:
+            prefix = "projects/Obsidian/"
+        else:
+            prefix = ""
+        rel_from_store = prefix + rel_in_vault
+
+        already_exists = False
+        try:
+            already_exists = self.resolve_inside(rel_from_store).exists()
+        except (PermissionError, ValueError, OSError):
+            already_exists = False
+
+        if daily:
+            mode = "append"
+            stamp = dt.datetime.now().strftime("%H:%M")
+            piece = f"\n\n## {stamp}\n{content}\n" if content else ""
+            content_out = piece if already_exists else self._frontmatter(tag_list, today) + f"# {title or today.isoformat()}\n" + piece
+        else:
+            mode = "overwrite"
+            content_out = self._frontmatter(tag_list, today) + f"# {name}\n\n{content}\n"
+
+        res = self.write(rel_from_store, content_out, mode=mode)
+        res["vault"] = "Obsidian" if vault_root else "JARVIS"
+        res["daily"] = daily
+        return res
+
+    @staticmethod
+    def _frontmatter(tags: list[str], when: dt.date) -> str:
+        lines = ["---", f"created: {when.isoformat()}"]
+        if tags:
+            lines.append("tags:")
+            lines.extend(f"  - {t}" for t in tags)
+        lines.append("---\n")
+        return "\n".join(lines)
 
     def tree(self, start: Path | None = None, depth: int = 2, limit: int = 200) -> list[str]:
         base = Path(start).expanduser() if start else self.root
@@ -673,11 +909,13 @@ class Vault:
             by_source = [dict(r) for r in c.execute(
                 "SELECT source, COUNT(*) AS files, SUM(chunks) AS chunks FROM files WHERE status='ok' GROUP BY source ORDER BY files DESC")]
             skipped = [dict(r) for r in c.execute("SELECT rel, note FROM files WHERE status!='ok' ORDER BY rel LIMIT 10")]
+            embedded = one("SELECT COUNT(*) FROM file_embeddings")
         return {"root": str(self.root), "exists": self.root.exists(), "files": one("SELECT COUNT(*) FROM files WHERE status='ok'"),
                 "chunks": one("SELECT COUNT(*) FROM file_chunks"), "chars": one("SELECT COALESCE(SUM(chars),0) FROM files"),
                 "skipped": one("SELECT COUNT(*) FROM files WHERE status!='ok'"), "skipped_examples": skipped,
                 "sources": self.sources(), "by_source": by_source, "last_scan": last["value"] if last else None,
-                "fts": self.has_fts, "pdf": bool(_which("pdftotext")), "office": bool(_which("textutil"))}
+                "fts": self.has_fts, "pdf": bool(_which("pdftotext")), "office": bool(_which("textutil")),
+                "semantic_search": emb.is_available(), "embedded_chunks": embedded}
 
 
 # ─────────────────────────── фоновое обновление ────────────────────────────
@@ -731,6 +969,13 @@ def _main(argv: list[str]) -> int:
     mv = sub.add_parser("move"); mv.add_argument("path"); mv.add_argument("to")
     tr = sub.add_parser("trash"); tr.add_argument("path")
     sub.add_parser("pending", help="новые файлы, ещё не разобранные в базу знаний")
+    on = sub.add_parser("note", help="создать заметку Obsidian (или в ~/JARVIS, если vault не подключён)")
+    on.add_argument("title", nargs="?", default="")
+    on.add_argument("--content", default="")
+    on.add_argument("--tags", default="")
+    on.add_argument("--folder")
+    on.add_argument("--daily", action="store_true", help="дописать в сегодняшнюю ежедневную заметку")
+    sub.add_parser("obsidian-list", help="показать все найденные Obsidian-vault-ы")
     for sp in sub.choices.values():
         sp.add_argument("--json", action="store_true")
     ap.add_argument("--json", action="store_true")
@@ -744,6 +989,8 @@ def _main(argv: list[str]) -> int:
             print(f"Хранилище: {st['root']}  {'(есть)' if st['exists'] else '(ещё не создано — jarvis vault init)'}")
             print(f"Файлов в индексе: {st['files']} · кусков: {st['chunks']} · символов: {st['chars']:,} · пропущено: {st['skipped']}")
             print(f"Последний проход: {st['last_scan'] or '—'} · PDF: {'да' if st['pdf'] else 'нет (brew install poppler)'} · Office: {'да' if st['office'] else 'нет'}")
+            sem = f"да ({st['embedded_chunks']} кусков)" if st["semantic_search"] else "нет (jarvis ollama pull nomic-embed-text)"
+            print(f"Семантический поиск (смысл, не только слова): {sem}")
             for s_ in st["sources"]:
                 print(f"  ⤷ проект {s_['name']} → {s_['path']}")
             for b in st["by_source"]:
@@ -768,6 +1015,18 @@ def _main(argv: list[str]) -> int:
             st = v.reindex(force=args.force)
             print(json.dumps(st, ensure_ascii=False) if args.json else
                   f"✔ проиндексировано {st['indexed']}, без изменений {st['unchanged']}, пропущено {st['skipped']}, удалено {st['removed']} ({st['seconds']} с)")
+            return 0
+        if args.cmd == "note":
+            if not args.title and not args.daily:
+                ap.error("нужен title (или --daily для ежедневной заметки)")
+            res = v.obsidian_note(title=args.title, content=args.content, tags=args.tags, folder=args.folder, daily=args.daily)
+            print(json.dumps(res, ensure_ascii=False) if args.json else f"✔ {res['vault']}: {res['rel']}")
+            return 0
+        if args.cmd == "obsidian-list":
+            vaults = Vault.list_obsidian_vaults()
+            if args.json:
+                print(json.dumps(vaults, ensure_ascii=False, indent=1)); return 0
+            print("\n".join(f"{v_['name']}  →  {v_['path']}" for v_ in vaults) or "Obsidian-vault-ы не найдены")
             return 0
         if args.cmd == "list":
             rows = v.list_files(args.prefix, recent=args.recent)

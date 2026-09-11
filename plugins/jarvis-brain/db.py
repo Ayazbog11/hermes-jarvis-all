@@ -28,8 +28,16 @@ import os
 import re
 import shutil
 import sqlite3
+import struct
 import threading
 from pathlib import Path
+
+try:
+    from . import embeddings as emb
+except ImportError:  # запуск как скрипт вне пакета плагина
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import embeddings as emb  # type: ignore
 
 SCHEMA_VERSION = 2
 
@@ -100,6 +108,8 @@ CREATE TABLE IF NOT EXISTS failures(
 CREATE INDEX IF NOT EXISTS failures_key ON failures(tool, error_type, resolved);
 CREATE TABLE IF NOT EXISTS reviews(
     id INTEGER PRIMARY KEY, started_at TEXT, finished_at TEXT, actor TEXT, report TEXT, stats TEXT);
+CREATE TABLE IF NOT EXISTS note_embeddings(
+    note_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vector BLOB NOT NULL, created_at TEXT);
 """
 
 FTS_SCHEMA = """
@@ -449,6 +459,7 @@ class Brain:
                     (content if len(content) >= len(before["content"]) * 0.8 else before["content"], kind, entity_id,
                      new_tags, importance, confidence, source, valid_until, now(), best["id"]),
                 )
+                self._conn.execute("DELETE FROM note_embeddings WHERE note_id=?", (best["id"],))
                 after = self._row("notes", best["id"])
                 self._log(actor, "note_update", "notes", best["id"], before, after)
                 res = {"action": "updated", "id": best["id"], "similarity": round(best_sim, 2), "note": after}
@@ -606,9 +617,63 @@ class Brain:
             "history": self.history(question, limit=5),
         }
 
+    def _semantic_note_ids(self, query: str, limit: int, kinds: list[str] | None, entity_id: int | None,
+                            include_archived: bool) -> list[int]:
+        """id заметок, ранжированные по косинусной близости эмбеддинга запроса (best-effort, требует Ollama)."""
+        if not emb.is_available():
+            return []
+        qvec_list = emb.embed([query])
+        if not qvec_list:
+            return []
+        qvec = qvec_list[0]
+        status_sql = "" if include_archived else "AND n.status='active'"
+        kind_sql = f"AND n.kind IN ({','.join('?' * len(kinds))})" if kinds else ""
+        ent_sql = "AND n.entity_id=?" if entity_id else ""
+        params: list = [*(kinds or []), *([entity_id] if entity_id else [])]
+        sql = (f"SELECT n.id, ne.vector FROM note_embeddings ne JOIN notes n ON n.id = ne.note_id "
+               f"WHERE 1=1 {status_sql} {kind_sql} {ent_sql}")
+        try:
+            rows = self._conn.execute(sql, params).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        scored = []
+        for r in rows:
+            try:
+                sim = emb.cosine(qvec, emb.unpack(r["vector"]))
+            except (ValueError, struct.error):
+                continue
+            if sim > 0.35:
+                scored.append((sim, r["id"]))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        return [nid for _, nid in scored[: limit * 3]]
+
+    def ensure_note_embeddings(self, batch: int = 50) -> dict:
+        """Досчитать эмбеддинги для заметок, у которых их ещё нет (best-effort, требует Ollama+nomic-embed-text)."""
+        if not emb.is_available():
+            return {"embedded": 0, "available": False}
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT n.id, n.content FROM notes n LEFT JOIN note_embeddings ne ON ne.note_id = n.id "
+                "WHERE ne.note_id IS NULL AND n.status='active' LIMIT ?", (batch,)).fetchall()
+        if not rows:
+            return {"embedded": 0, "available": True}
+        vecs = emb.embed([r["content"] for r in rows])
+        if not vecs:
+            return {"embedded": 0, "available": True, "note": "модель эмбеддингов не ответила"}
+        with self._lock:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO note_embeddings(note_id, model, vector, created_at) VALUES (?,?,?,?)",
+                [(r["id"], emb.EMBED_MODEL, emb.pack(v), now()) for r, v in zip(rows, vecs, strict=True)])
+            self._conn.commit()
+        return {"embedded": len(rows), "available": True}
+
     def _search_raw(self, query: str, limit: int, kinds: list[str] | None, entity_id: int | None = None,
                     include_archived: bool = False) -> list[dict]:
-        """Поиск без побочных эффектов; возвращает строки notes с полем score."""
+        """Поиск без побочных эффектов; возвращает строки notes с полем score.
+
+        Гибрид: BM25 (FTS5) по точным словам + (если доступна Ollama с nomic-embed-text) семантическая
+        близость эмбеддингов, объединённые Reciprocal Rank Fusion — см. embeddings.py и docs/RESEARCH.md Round 5.
+        """
         q = fts_query(query)
         status_sql = "" if include_archived else "AND n.status='active'"
         kind_sql = f"AND n.kind IN ({','.join('?' * len(kinds))})" if kinds else ""
@@ -628,8 +693,21 @@ class Brain:
                       ORDER BY n.importance DESC, n.updated_at DESC LIMIT ?"""
             params = [*(f"%{t}%" for t in toks), *(kinds or []), *([entity_id] if entity_id else []), limit * 3]
         try:
-            rows = [dict(r) for r in self._conn.execute(sql, params)]
+            kw_rows = {r["id"]: dict(r) for r in self._conn.execute(sql, params)}
         except sqlite3.OperationalError:
+            kw_rows = {}
+        sem_ids = self._semantic_note_ids(query, limit, kinds, entity_id, include_archived) if query else []
+        if sem_ids:
+            missing = [i for i in sem_ids if i not in kw_rows]
+            if missing:
+                ph = ",".join("?" * len(missing))
+                for r in self._conn.execute(f"SELECT * FROM notes n WHERE n.id IN ({ph})", missing):
+                    kw_rows[r["id"]] = dict(r) | {"rank": 0.0}
+            fused_order = [i for i, _ in emb.rrf_fuse([list(kw_rows.keys()), sem_ids])]
+        else:
+            fused_order = list(kw_rows.keys())
+        rows = [kw_rows[i] for i in fused_order if i in kw_rows]
+        if not rows:
             return []
         cutoff = (dt.datetime.now() - dt.timedelta(days=30)).isoformat()
         for r in rows:
@@ -686,6 +764,8 @@ class Brain:
                 return before
             sets = ", ".join(f"{k}=?" for k in fields) + ", updated_at=?"
             self._conn.execute(f"UPDATE notes SET {sets} WHERE id=?", (*fields.values(), now(), note_id))
+            if "content" in fields:  # текст изменился — старый эмбеддинг больше не годится, досчитается сам при поиске
+                self._conn.execute("DELETE FROM note_embeddings WHERE note_id=?", (note_id,))
             after = self._row("notes", int(note_id))
             self._log(actor, "note_update", "notes", int(note_id), before, after)
             return after
@@ -741,6 +821,7 @@ class Brain:
                 "UPDATE notes SET content=?, tags=?, importance=?, updated_at=? WHERE id=?",
                 (" ".join((content or k["content"]).split())[:2000], ",".join(sorted(tags)), imp, now(), keep),
             )
+            self._conn.execute("DELETE FROM note_embeddings WHERE note_id=?", (int(keep),))
             return {"kept": int(keep), "merged": [int(d) for d in drop]}
 
     # ─────────────────────────────── журнал ходов и эпизоды ───────────────
@@ -906,6 +987,13 @@ class Brain:
             self._conn.execute("VACUUM")
         except sqlite3.OperationalError:
             pass
+        # 7. семантический индекс (best-effort, требует Ollama+nomic-embed-text) — небольшими порциями,
+        # чтобы не растягивать ночную ревизию на случай тысяч заметок без эмбеддингов
+        try:
+            emb_stats = self.ensure_note_embeddings(batch=200)
+            report["embeddings"] = emb_stats
+        except Exception:
+            report["embeddings"] = {"embedded": 0, "available": False}
         return report
 
     def review_plan(self, max_items: int = 25) -> dict:

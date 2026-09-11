@@ -119,6 +119,45 @@ GitHub Actions — нередкий вектор атаки на CI через �
 - `alex2772/kuni` (tdlib-userbot с RAG-памятью) — архитектурно другая задача (Telegram-компаньон через
   личный аккаунт), не «джарвис»-ассистент через Bot API; не применимо напрямую.
 
+## Раунд 5 — Obsidian, гибридный поиск и обзор ≈100 open-source «Джарвисов»/second-brain проектов (сентябрь 2026)
+
+Просмотрены (GitHub topics/поиск, релизы, README): `isair/jarvis` (100% локальный, embedding-based tool
+routing, knowledge-graph память, `nomic-embed-text` через Ollama как эмбеддинг-бэкенд — с graceful fallback
+на keyword search, если у чат-провайдера нет embeddings endpoint), `bertrandmbanwi/Jarvis`, `vannu07/jarvis`,
+`fedcal/open-jarvis` (мульти-девайсная инфраструктура, mem0/Qdrant/Zep для памяти — оверинжиниринг для личного
+ассистента одного пользователя), `coleam00/second-brain-starter` (архитектурный blueprint: «70% вектор + 30%
+ключевые слова = лучшее из обоих», FastEmbed локально), `smixs/agent-second-brain` (Telegram → Obsidian vault,
+knowledge-graph память под названием autograph), `flepied/second-brain-agent` (markdown+Obsidian → ChromaDB →
+LangChain RAG), `AgriciDaniel/claude-obsidian`, `swarmclawai/swarmvault` и ещё около 80 репозиториев по темам
+`personal-knowledge-management`, `second-brain`, `hybrid-rag`, `ai-second-brain` — плюс сравнительные обзоры
+RAG-фреймворков (`docs/RESEARCH.md`-класса статьи firecrawl.dev/vellum.ai/evermind.ai за 2026 год).
+
+**Общий вывод, встречающийся почти везде**: чистый BM25/keyword-поиск (то, что у JARVIS было с версии 1.8)
+не находит перефразировки, а полноценный внешний vector DB (Qdrant/Milvus/Chroma) — избыточная инфраструктура
+для одного пользователя и одной SQLite-базы. Победивший паттерн (isair/jarvis, coleam00/second-brain-starter,
+LightRAG/txtai/AnythingLLM) — **гибрид: BM25 + локальные эмбеддинги, объединённые через Reciprocal Rank
+Fusion** (тот же алгоритм по умолчанию в Elasticsearch/OpenSearch). Взято точечно и реализовано в
+`plugins/jarvis-brain/embeddings.py`: эмбеддинги — через уже интегрированную в этом проекте Ollama
+(`nomic-embed-text`, ~270 МБ, тот же паттерн, что у isair/jarvis), векторы хранятся как обычный BLOB в
+`brain.db` (не sqlite-vec/faiss/numpy — обзор `sqlite-vec` подтвердил, что для десятков тысяч кусков линейный
+перебор чистым Python сравним по скорости и не тянет C-расширение, которое не всегда собирается на всех
+платформах Windows/Linux). Полностью опционально — без Ollama всё работает как раньше (чистый BM25).
+
+**Obsidian**: у `smixs/agent-second-brain`, `flepied/second-brain-agent`, `AgriciDaniel/claude-obsidian` и
+десятков других second-brain проектов Obsidian — стандартный формат хранения (plain Markdown + YAML
+frontmatter + `.obsidian/daily-notes.json` для дневных заметок). У нас Obsidian уже подключался как источник
+для индексации (`vault connect notes-obsidian`), но поиск vault-а работал только на macOS, а запись — голым
+текстом без конвенций Obsidian. Исправлено: поиск `obsidian.json` теперь работает на Windows (`%APPDATA%`),
+Linux (`~/.config`, snap, flatpak) и macOS; добавлена запись заметок **по конвенциям Obsidian**
+(YAML-frontmatter, поддержка дневных заметок по личным настройкам daily-notes.json пользователя) — см.
+`vault_manage obsidian_note`/`jarvis vault note` в `docs/VAULT.md`.
+
+**Что не взято и почему**: knowledge-graph память (autograph, mem0-стиль граф связей) — у jarvis-brain уже
+есть облегчённая версия того же самого (`entities`/`relations` таблицы, карточки, `brain_entity relate`),
+полноценный граф с decay/health-scoring избыточен для личного ассистента и добавил бы сложность без
+пропорциональной пользы; multi-device/AR-инфраструктура (`fedcal/open-jarvis`) — вне рамок проекта (Windows/
+macOS/Linux десктоп, не носимые устройства).
+
 ## Что уникального добавлено в этом проекте
 
 1. Плагин `jarvis-macos` — 29 типизированных инструментов с единым форматом ошибок и подсказками по разрешениям.

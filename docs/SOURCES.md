@@ -67,9 +67,22 @@
 | https://github.com/ollama/ollama/blob/main/docs/api.md | HTTP API Ollama (`/api/tags`, `/api/pull`) — основа `scripts/ollama_local.py` без внешних зависимостей |
 | https://polyformproject.org/licenses/noncommercial/1.0.0 | Уже использован как база `LICENSE` (см. предыдущий раунд) |
 
+## 7. Раунд 5 — Obsidian, гибридный поиск (BM25 + эмбеддинги), обзор ~100 second-brain проектов
+
+| Источник | Что взято |
+|---|---|
+| https://github.com/isair/jarvis | Embedding-based поиск памяти через локальный `nomic-embed-text` (Ollama) с graceful fallback на keyword search — прямой прообраз `plugins/jarvis-brain/embeddings.py` |
+| https://github.com/coleam00/second-brain-starter | «70% вектор + 30% ключевые слова» и «Memory Search (hybrid RAG)» как явный архитектурный паттерн — подтверждение выбора гибрида, а не одного из двух |
+| https://github.com/smixs/agent-second-brain, https://github.com/flepied/second-brain-agent | Obsidian как стандартное хранилище second-brain проектов (plain Markdown + вики-ссылки + daily notes) — обоснование для `vault_manage obsidian_note` |
+| https://help.obsidian.md (How Obsidian stores data), форум Obsidian | Точные пути `obsidian.json` на Windows (`%APPDATA%\obsidian`) и Linux (`~/.config/obsidian`, snap/flatpak) — раньше искалось только на macOS |
+| Документация Daily notes (obsidianmd-obsidian-help.mintlify.app) | Формат `.obsidian/daily-notes.json` (`folder`, `format` — Moment.js-токены) — основа `_daily_notes_settings`/`_moment_like_date` |
+| https://mljourney.com (Ollama REST API Reference), webscraft.org | Формат запроса/ответа `/api/embed` (`{"model", "input"}` → `{"embeddings": [[...]]}`) — основа `embeddings.py:embed()` |
+| ai-tldr.dev (sqlite-vec explained), theconsensus.dev | Сравнение sqlite-vec/C-расширений vs чистый Python: для личного хранилища (не веб-масштаб) линейный перебор без доп. зависимостей — обоснованный выбор, не сделано ради простоты |
+| Reciprocal Rank Fusion (стандарт Elasticsearch/OpenSearch `reciprocal_rank_fusion`) | Формула `score = Σ 1/(k+rank+1)`, k=60 — способ объединить BM25-score и cosine-similarity без калибровки весов |
+
 ## Что сознательно не взято и почему
 
-- **Векторные БД / эмбеддинги** (Mem0, Cognee, Hindsight): для личной базы в тысячи заметок FTS5 с карточками закрывает подавляющее большинство запросов, а лишний сервис ломает принцип «скачал и запустил». Место под это оставлено (миграции `Brain._migrate`).
+- **Полноценные векторные БД** (Qdrant, Milvus, Chroma, mem0/Cognee как внешний сервис): для личной базы в тысячи заметок/файлов чистый Python + BLOB в существующей `brain.db` не уступает по скорости и не требует лишнего процесса — ломало бы принцип «скачал и запустил». Лёгкая версия семантического поиска реализована локально в Раунде 5 (`plugins/jarvis-brain/embeddings.py`, опционально, требует только Ollama, которая уже была нужна проекту).
 - **Свой агентский цикл / STT / TTS**: всё это есть в Hermes и работает одинаково в терминале, Telegram и Discord.
 - **Регулярки «фраза → действие»** из классических Jarvis: выбор инструмента делает модель по JSON-схемам.
 - **Полная замена локального STT/TTS-стека** (Moonshine ONNX, Kokoro и т.п. из isair/jarvis, bertrandmbanwi/Jarvis): Hermes уже даёт faster-whisper/openWakeWord/Edge-TTS кросс-платформенно из коробки — дублирование не оправдано (см. `docs/RESEARCH.md`, Раунд 3 и 4).
