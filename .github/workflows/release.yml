@@ -53,7 +53,7 @@ jobs:
         run: |
           zip -qr "jarvis-hermes-${{ steps.v.outputs.version }}.zip" . -x ".git/*" "*/__pycache__/*" ".pytest_cache/*" "notes.md"
           cp app/prebuilt/JARVIS.app.zip JARVIS.app.zip
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         if: steps.t.outputs.exists != 'true'
         with:
           tag_name: v${{ steps.v.outputs.version }}
