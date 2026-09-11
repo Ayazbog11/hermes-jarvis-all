@@ -28,8 +28,11 @@ import urllib.request
 from pathlib import Path
 
 from . import gcalendar
+from . import messenger
 from . import platform_compat as pc
 from . import schemas, state
+from . import voice_note
+from . import working_memory
 from .hud_client import HudClient
 from .triggers import Triggers
 
@@ -41,7 +44,27 @@ _SKILLS_DIR = Path(__file__).parent / "skills"
 _hud = HudClient()
 _cfg = {"user_name": "сэр", "city": "Zürich", "inject_context": True,
         "watchdog": True, "battery_threshold": 20, "watch_calendar": False, "follow_focus": True,
-        "triggers": True, "trigger_llm": True, "disk_min_gb": 20, "idle_return_min": 90, "screen_context": True}
+        "triggers": True, "trigger_llm": True, "disk_min_gb": 20, "idle_return_min": 90, "screen_context": True,
+        "remote_alert_target": ""}
+
+
+def _remote_alert(title: str, text: str) -> None:
+    """Продублировать важное локальное уведомление (батарея/календарь) в мессенджер,
+    если пользователь задал plugins.entries.jarvis-core.settings.remote_alert_target
+    (например "telegram" — домашний канал). Не мешает основному потоку: fire-and-forget
+    в отдельном потоке, ошибки (Hermes/платформа недоступны) молча проглатываются —
+    десктопное уведомление уже отправлено, это just a nice-to-have дубль «когда не за компьютером»."""
+    target = (_cfg.get("remote_alert_target") or "").strip()
+    if not target or not messenger.is_available():
+        return
+
+    def _send() -> None:
+        try:
+            messenger.send(target, text, subject=title)
+        except Exception as e:
+            logger.debug("remote_alert: %s", e)
+
+    threading.Thread(target=_send, name="jarvis-remote-alert", daemon=True).start()
 
 
 # ══════════════════════════════ контекст хода ══════════════════════════════
@@ -79,7 +102,11 @@ def build_context() -> str:
         _UPDATE_MENTIONED[upd["latest"]] = True
         parts.append(f"Доступно обновление JARVIS {upd['latest']} (сейчас {upd['version']}) — можешь упомянуть одной фразой; ставить только по просьбе.")
     parts.append(f"Обращайся к пользователю: {_cfg['user_name']}.")
-    return "[JARVIS context] " + " ".join(parts)
+    ctx = "[JARVIS context] " + " ".join(parts)
+    wm = working_memory.render_context()
+    if wm:
+        ctx += "\n" + wm
+    return ctx
 
 
 _SKILL_INJECT_RE = re.compile(r'^\s*\[IMPORTANT: The user has invoked the "([^"]+)" skill', re.I)
@@ -399,6 +426,42 @@ def tool_jarvis_calendar(args: dict, **kwargs) -> str:
         return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
 
 
+def tool_jarvis_send_message(args: dict, **kwargs) -> str:
+    """Отправить сообщение/файл/голосовое в мессенджер через `hermes send` (см. messenger.py)."""
+    action = args.get("action") or "send"
+    if action == "list":
+        result = messenger.list_targets(platform=(args.get("target") or "").strip() or None)
+        return json.dumps(result, ensure_ascii=False)
+    if action == "send":
+        result = messenger.send(args.get("target", ""), args.get("text", ""), subject=args.get("subject") or None)
+        return json.dumps(result, ensure_ascii=False)
+    if action == "send_file":
+        result = messenger.send_file(args.get("target", ""), args.get("path", ""), caption=args.get("caption") or None)
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": False, "error": f"Неизвестное действие: {action}"}, ensure_ascii=False)
+
+
+def tool_jarvis_voice_note(args: dict, **kwargs) -> str:
+    """Синтезировать голосовое сообщение из текста (см. voice_note.py) — файл можно затем отправить
+    через jarvis_send_message(action=send_file)."""
+    result = voice_note.generate(args.get("text", ""))
+    return json.dumps(result, ensure_ascii=False)
+
+
+def tool_jarvis_working_memory(args: dict, **kwargs) -> str:
+    """Кратковременная рабочая память на 1-3 дня (см. working_memory.py, идея из alex2772/kuni)."""
+    action = args.get("action") or "list"
+    if action == "add":
+        return json.dumps(working_memory.add(args.get("text", "")), ensure_ascii=False)
+    if action == "clear":
+        return json.dumps(working_memory.clear(), ensure_ascii=False)
+    if action == "list":
+        max_age = float(args.get("max_age_days") or 3.0)
+        items = working_memory.list_active(max_age)
+        return json.dumps({"success": True, "items": items, "count": len(items)}, ensure_ascii=False)
+    return json.dumps({"success": False, "error": f"Неизвестное действие: {action}"}, ensure_ascii=False)
+
+
 # ══════════════════════════════ watchdog (без LLM) ═════════════════════════
 
 class Watchdog:
@@ -455,6 +518,7 @@ class Watchdog:
             msg = f"Заряд {pct}%. Рекомендую подключить питание, сэр."
             self.notify("JARVIS 🔋", msg)
             _hud.emit("alert", {"kind": "battery", "text": msg})
+            _remote_alert("JARVIS 🔋", msg)
             self._last_battery_alert = now
             sent.append(msg)
         if self.watch_calendar:
@@ -471,6 +535,7 @@ class Watchdog:
                             logger.debug("meeting_prep: %s", e)
                     self.notify("JARVIS 📅", msg + (f" — {prep[:120]}" if prep else ""))
                     _hud.emit("alert", {"kind": "calendar", "text": msg})
+                    _remote_alert("JARVIS 📅", msg + (f" — {prep[:120]}" if prep else ""))
                     if prep:
                         _hud.emit("panel.show", {"kind": "markdown", "title": f"К ВСТРЕЧЕ · {ev['title']}", "content": prep,
                                                  "position": "right", "ttl": 600})
@@ -565,7 +630,7 @@ BRIEF_PROMPT = (
 def register(ctx) -> None:
     # настройки
     for key in ("hud_url", "user_name", "city", "inject_context", "watchdog", "battery_threshold", "watch_calendar", "follow_focus",
-                "triggers", "trigger_llm", "disk_min_gb", "idle_return_min", "screen_context"):
+                "triggers", "trigger_llm", "disk_min_gb", "idle_return_min", "screen_context", "remote_alert_target"):
         try:
             val = ctx.get_config(key, default=None)
         except Exception:
@@ -595,6 +660,9 @@ def register(ctx) -> None:
     ctx.register_tool(name="jarvis_weather", toolset=TOOLSET, schema=schemas.JARVIS_WEATHER, handler=tool_jarvis_weather)
     ctx.register_tool(name="jarvis_update", toolset=TOOLSET, schema=schemas.JARVIS_UPDATE, handler=tool_jarvis_update)
     ctx.register_tool(name="jarvis_calendar", toolset=TOOLSET, schema=schemas.JARVIS_CALENDAR, handler=tool_jarvis_calendar)
+    ctx.register_tool(name="jarvis_send_message", toolset=TOOLSET, schema=schemas.JARVIS_SEND_MESSAGE, handler=tool_jarvis_send_message)
+    ctx.register_tool(name="jarvis_voice_note", toolset=TOOLSET, schema=schemas.JARVIS_VOICE_NOTE, handler=tool_jarvis_voice_note)
+    ctx.register_tool(name="jarvis_working_memory", toolset=TOOLSET, schema=schemas.JARVIS_WORKING_MEMORY, handler=tool_jarvis_working_memory)
 
     # бандл-скиллы плагина (jarvis-core:morning-briefing и т.д.)
     if _SKILLS_DIR.exists():

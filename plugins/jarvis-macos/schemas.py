@@ -137,6 +137,30 @@ MAC_POWER = {
     },
 }
 
+MAC_PROCESS = {
+    "name": "mac_process",
+    "description": (
+        "Процессы macOS: list — топ процессов по CPU/памяти; find — найти процесс по имени; "
+        "kill — завершить процесс по PID или имени (аналог Мониторинга системы). Используй для «завис Safari, "
+        "закрой его насильно», «что грузит процессор», «сколько памяти ест эта программа». Для kill "
+        "ОБЯЗАТЕЛЬНО сначала переспроси пользователя и передай confirmed=true — завершение процесса может "
+        "привести к потере несохранённых данных."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["list", "find", "kill"]},
+            "sort_by": {"type": "string", "enum": ["cpu", "memory"], "default": "cpu", "description": "Для list"},
+            "limit": {"type": "integer", "default": 12, "description": "Для list"},
+            "name": {"type": "string", "description": "Имя процесса (для find/kill по имени)"},
+            "pid": {"type": "integer", "description": "PID (для kill по конкретному процессу)"},
+            "force": {"type": "boolean", "default": False, "description": "Принудительное завершение (kill -9)"},
+            "confirmed": {"type": "boolean", "default": False, "description": "true только если пользователь явно подтвердил kill"},
+        },
+        "required": ["action"],
+    },
+}
+
 MAC_WIFI = {
     "name": "mac_wifi",
     "description": "Wi-Fi: включить, выключить, узнать текущую сеть/состояние.",
@@ -440,7 +464,7 @@ MAC_APPLESCRIPT = {
 
 ALL_SCHEMAS = [
     MAC_APP, MAC_OPEN, MAC_SPOTLIGHT, MAC_FINDER,
-    MAC_VOLUME, MAC_BRIGHTNESS, MAC_DARK_MODE, MAC_POWER, MAC_WIFI, MAC_BLUETOOTH, MAC_BATTERY, MAC_SYSTEM_INFO,
+    MAC_VOLUME, MAC_BRIGHTNESS, MAC_DARK_MODE, MAC_POWER, MAC_PROCESS, MAC_WIFI, MAC_BLUETOOTH, MAC_BATTERY, MAC_SYSTEM_INFO,
     MAC_MEDIA, MAC_SAY, MAC_NOTIFY, MAC_SCREENSHOT, MAC_CAMERA_SNAP, MAC_WALLPAPER, MAC_FILE_MANAGE, MAC_CONTACTS, MAC_FOCUS,
     MAC_CALENDAR, MAC_REMINDERS, MAC_NOTES, MAC_CLIPBOARD, MAC_TYPE, MAC_WINDOW, MAC_SHORTCUT, MAC_APPLESCRIPT,
 ]

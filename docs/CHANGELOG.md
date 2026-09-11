@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.12.0 — Мессенджер: файлы/фото/голосовые, выбор модели ИИ из HUD
+
+По результатам продолжения обзора GitHub-проектов уровня Jarvis/агент (Раунд 7, в т.ч.
+`alex2772/kuni` — Telegram-бот с RAG-дневником, генерацией картинок/озвучки и Prometheus-метриками,
+см. `docs/RESEARCH.md`): скопированы и адаптированы возможности «отправлять файлы/голосовые по команде»
+и «переключать модель под задачу», уже присутствующие как паттерн в Hermes Agent, но раньше не выведенные
+наружу ни в инструментах, ни в HUD.
+
+- **`jarvis_send_message(action="send_file")`** — отправка файла/фото/аудио в любой настроенный
+  мессенджер через `hermes send "MEDIA:<путь>"` (`messenger.send_file()`), с опциональной подписью.
+  Не заводит отдельного HTTP-клиента — переиспользует ту же CLI-обёртку, что и текстовые сообщения.
+- **`jarvis_voice_note(text)`** — синтез голосового сообщения (`plugins/jarvis-core/voice_note.py`)
+  через тот же движок TTS, что и у HUD (`hud/tts.py`: edge-tts → `say`/SAPI/espeak-ng каскад),
+  без дублирования логики синтеза. Результат можно сразу передать в `send_file` — модель сама
+  озвучивает текст и отправляет его как голосовое, а не просто текстом.
+- **HUD, панель «Отправить сообщение»**: кнопка «🎙️» — озвучить введённый текст и отправить как
+  голосовое (`POST /api/send/voice`), без похода в чат с моделью.
+- **HUD, новая панель «Модель ИИ»**: переключение модели чата, зрения (`auxiliary.vision`), сжатия
+  истории (`auxiliary.compression`), заголовков сессий (`auxiliary.title_generation`), провайдера и
+  модели генерации картинок (`image_gen.*`) и провайдера озвучки (`tts.provider`) — каждое поле
+  независимо, одной кнопкой, без похода в `hermes model`/ручной правки `config.yaml`. Новый
+  `scripts/model_switch.py` — тонкая обёртка над `hermes config get/set` с явным списком разрешённых
+  ключей (`GET/POST /api/model`).
+- **Рабочая память на 1-3 дня** (`plugins/jarvis-core/working_memory.py`, инструмент
+  `jarvis_working_memory`) — по образцу `data/working_memory.md`/`<things_to_remember>` у
+  `alex2772/kuni`: незавершённые задачи и обещания, которые ещё рано класть в постоянную базу знаний
+  (`jarvis-brain`), но нельзя забывать между сообщениями; сами исчезают через несколько дней,
+  подмешиваются в `[JARVIS context]` на каждом ходе.
+- **HUD `GET /metrics`** — метрики использования LLM в текстовом формате Prometheus
+  (`jarvis_llm_usage_input_tokens_total`/`..._output_tokens_total`/`..._cost_usd_total`/
+  `jarvis_llm_sessions_total`, label `model`) поверх того же READ-ONLY чтения `state.db`, что и
+  `jarvis usage`/`/api/usage` — аналог `llm_usage_*`-метрик `alex2772/kuni`, без установки
+  Prometheus/Grafana-стека целиком: любой существующий Prometheus-сервер может scrape'ить HUD напрямую.
+- +7 новых методов сверх ранее заявленного минимума (после Раунда 6: `jarvis_send_message`,
+  Watchdog remote-alert, `win_process`/`mac_process`/`linux_process`, безопасный `ollama use`,
+  HUD `/api/usage`, `/api/send`) — итого продолжается непрерывное сканирование других
+  Jarvis-подобных проектов и перенос удачных идей, как и было запрошено. Полный разбор, что именно
+  перенесено из `alex2772/kuni` и что сознательно не перенесено (и почему) — `docs/RESEARCH.md` Раунд 7.
+- +33 новых теста (`test_messenger.py`, новый `test_voice_note.py`, новый `test_working_memory.py`,
+  `test_hud_and_scripts.py`), полный набор проходит без регрессий, `ruff` чист.
+
 ## 1.11.0 — `jarvis usage`: локальный учёт токенов и стоимости
 
 - **Новая команда `jarvis usage`** (`scripts/usage_report.py`) — показывает, сколько токенов и денег

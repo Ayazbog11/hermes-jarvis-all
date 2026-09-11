@@ -90,6 +90,39 @@ def test_shell_disabled_by_default():
     assert out["success"] is False and "allow_raw_shell" in out["error"]
 
 
+def test_linux_process_list_parses_ps_output(monkeypatch):
+    lin = load_plugin("jarvis-linux")
+    monkeypatch.setattr(lin.tools.lx, "IS_LINUX", True)
+    monkeypatch.setattr(lin.tools, "run", lambda *a, **k: "1234 12.5 348224 chrome\n5678  0.1  56320 bash")
+    out = json.loads(lin.tools.linux_process({"action": "list"}))
+    assert out["success"] is True
+    assert out["processes"][0] == {"pid": 1234, "name": "chrome", "cpu_percent": 12.5, "memory_mb": 340.1}
+
+
+def test_linux_process_find_requires_name(monkeypatch):
+    lin = load_plugin("jarvis-linux")
+    monkeypatch.setattr(lin.tools.lx, "IS_LINUX", True)
+    out = json.loads(lin.tools.linux_process({"action": "find"}))
+    assert out["success"] is False
+
+
+def test_linux_process_kill_requires_confirmation(monkeypatch):
+    lin = load_plugin("jarvis-linux")
+    monkeypatch.setattr(lin.tools.lx, "IS_LINUX", True)
+    out = json.loads(lin.tools.linux_process({"action": "kill", "pid": 1}))
+    assert out["success"] is False and "подтвержд" in out["error"]
+
+
+def test_linux_process_kill_by_pid_calls_kill(monkeypatch):
+    lin = load_plugin("jarvis-linux")
+    monkeypatch.setattr(lin.tools.lx, "IS_LINUX", True)
+    calls = []
+    monkeypatch.setattr(lin.tools, "run", lambda cmd, **k: calls.append(cmd) or "")
+    out = json.loads(lin.tools.linux_process({"action": "kill", "pid": 42, "confirmed": True, "force": True}))
+    assert out["success"] is True
+    assert calls[0] == ["kill", "-9", "42"]
+
+
 def test_resolve_target():
     lin = load_plugin("jarvis-linux")
     r = lin.linux.resolve_target

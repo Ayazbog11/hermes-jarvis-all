@@ -183,6 +183,138 @@ def test_post_rejects_cross_origin_and_non_json(hud_server):
         assert "Access-Control-Allow-Origin" not in r.headers and r.headers["X-Frame-Options"] == "SAMEORIGIN"
 
 
+def test_usage_endpoint_reads_state_db(hud_server, tmp_path, monkeypatch):
+    """/api/usage переиспользует scripts/usage_report.py:collect() против настоящего state.db."""
+    import sqlite3
+    import time as _time
+
+    db = tmp_path / "state.db"
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, source TEXT, model TEXT, started_at REAL,
+        input_tokens INTEGER, output_tokens INTEGER, estimated_cost_usd REAL)""")
+    conn.execute("INSERT INTO sessions VALUES ('s1','cli','claude-x',?,100,50,0.01)", (_time.time(),))
+    conn.commit(); conn.close()
+    monkeypatch.setattr(hud.usage_report, "STATE_DB", db)
+    st, body = _get(hud_server + "/api/usage?since=7")
+    data = json.loads(body)
+    assert data["ok"] is True
+    assert data["total"]["sessions"] == 1
+    assert data["total"]["input_tokens"] == 100
+
+
+def test_usage_endpoint_missing_db_reports_error(hud_server, monkeypatch, tmp_path):
+    monkeypatch.setattr(hud.usage_report, "STATE_DB", tmp_path / "does-not-exist.db")
+    st, body = _get(hud_server + "/api/usage")
+    data = json.loads(body)
+    assert data["ok"] is False and "error" in data
+
+
+def test_metrics_endpoint_prometheus_format(hud_server, tmp_path, monkeypatch):
+    """/metrics — Prometheus text exposition format поверх того же state.db, что и /api/usage
+
+    (идея из alex2772/kuni: llm_usage_* по model, см. docs/RESEARCH.md, Раунд 7)."""
+    import sqlite3
+    import time as _time
+
+    db = tmp_path / "state.db"
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE sessions (
+        id TEXT PRIMARY KEY, source TEXT, model TEXT, started_at REAL,
+        input_tokens INTEGER, output_tokens INTEGER, estimated_cost_usd REAL)""")
+    conn.execute("INSERT INTO sessions VALUES ('s1','cli','claude-x',?,100,50,0.01)", (_time.time(),))
+    conn.commit(); conn.close()
+    monkeypatch.setattr(hud.usage_report, "STATE_DB", db)
+    st, body = _get(hud_server + "/metrics")
+    text = body.decode("utf-8")
+    assert st == 200
+    assert "jarvis_llm_usage_input_tokens_total" in text
+    assert 'model="claude-x"} 100' in text
+    assert 'jarvis_llm_usage_output_tokens_total{model="claude-x"} 50' in text
+
+
+def test_metrics_endpoint_missing_db_stays_valid_text(hud_server, monkeypatch, tmp_path):
+    monkeypatch.setattr(hud.usage_report, "STATE_DB", tmp_path / "does-not-exist.db")
+    st, body = _get(hud_server + "/metrics")
+    assert st == 200
+    assert body.decode("utf-8").startswith("#")
+
+
+def test_send_endpoint_requires_target_and_text(hud_server):
+    req = urllib.request.Request(hud_server + "/api/send", data=json.dumps({"target": "", "text": ""}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=3)
+    assert e.value.code == 400
+
+
+def test_send_endpoint_calls_messenger(hud_server, monkeypatch):
+    calls = []
+    monkeypatch.setattr(hud.messenger, "send", lambda target, text, subject=None: calls.append((target, text, subject)) or {"success": True})
+    req = urllib.request.Request(hud_server + "/api/send",
+                                 data=json.dumps({"target": "telegram", "text": "hi"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    assert json.loads(body)["success"] is True
+    assert calls == [("telegram", "hi", None)]
+
+
+def test_send_targets_endpoint(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.messenger, "list_targets", lambda platform=None: {"success": True, "targets": [{"platform": "telegram"}]})
+    st, body = _get(hud_server + "/api/send/targets")
+    data = json.loads(body)
+    assert data["success"] is True and data["targets"][0]["platform"] == "telegram"
+
+
+def test_send_voice_endpoint_requires_target_and_text(hud_server):
+    req = urllib.request.Request(hud_server + "/api/send/voice", data=json.dumps({"target": "", "text": ""}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=3)
+    assert e.value.code == 400
+
+
+def test_send_voice_endpoint_generates_and_sends(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.voice_note, "generate", lambda text, out_dir=None: {"success": True, "path": "/tmp/voice_1.mp3", "mime": "audio/mpeg"})
+    calls = []
+    monkeypatch.setattr(hud.messenger, "send_file",
+                         lambda target, path, caption=None: calls.append((target, path, caption)) or {"success": True})
+    req = urllib.request.Request(hud_server + "/api/send/voice",
+                                 data=json.dumps({"target": "telegram", "text": "Привет"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    assert json.loads(body)["success"] is True
+    assert calls == [("telegram", "/tmp/voice_1.mp3", None)]
+
+
+def test_send_voice_endpoint_propagates_generation_failure(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.voice_note, "generate", lambda text, out_dir=None: {"success": False, "error": "нет движка TTS"})
+    req = urllib.request.Request(hud_server + "/api/send/voice",
+                                 data=json.dumps({"target": "telegram", "text": "Привет"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    data = json.loads(body)
+    assert data["success"] is False and "TTS" in data["error"]
+
+
+def test_model_get_endpoint(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.model_switch, "get_all", lambda: {"success": True, "values": {"chat_model": "x"}, "fields": {}})
+    st, body = _get(hud_server + "/api/model")
+    data = json.loads(body)
+    assert data["success"] is True and data["values"]["chat_model"] == "x"
+
+
+def test_model_set_endpoint(hud_server, monkeypatch):
+    calls = []
+    monkeypatch.setattr(hud.model_switch, "set_value", lambda field, value: calls.append((field, value)) or {"success": True})
+    req = urllib.request.Request(hud_server + "/api/model",
+                                 data=json.dumps({"field": "chat_model", "value": "openai/gpt-4o"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    assert json.loads(body)["success"] is True
+    assert calls == [("chat_model", "openai/gpt-4o")]
+
+
 def test_brain_overview_endpoint(hud_server, tmp_path, monkeypatch):
     """/api/brain читает базу знаний в режиме read-only."""
     sys.path.insert(0, str(ROOT / "plugins" / "jarvis-brain"))

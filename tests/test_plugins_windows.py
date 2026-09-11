@@ -115,6 +115,57 @@ def test_type_rejects_unknown_modifiers():
     assert out["success"] is False and "модификатор" in out["error"]
 
 
+def test_win_process_list_parses_powershell_output(monkeypatch):
+    win = load_plugin("jarvis-windows")
+    monkeypatch.setattr(win.tools.win, "IS_WINDOWS", True)
+    monkeypatch.setattr(win.tools, "powershell", lambda *a, **k: "1234|chrome|12.5|340.2\n5678|explorer|0.1|55.0")
+    out = json.loads(win.tools.win_process({"action": "list"}))
+    assert out["success"] is True
+    assert out["processes"][0] == {"pid": 1234, "name": "chrome", "cpu_seconds": 12.5, "memory_mb": 340.2}
+
+
+def test_win_process_find_by_name(monkeypatch):
+    win = load_plugin("jarvis-windows")
+    monkeypatch.setattr(win.tools.win, "IS_WINDOWS", True)
+    monkeypatch.setattr(win.tools, "powershell", lambda *a, **k: "111|notepad")
+    out = json.loads(win.tools.win_process({"action": "find", "name": "notepad"}))
+    assert out["success"] is True and out["count"] == 1 and out["processes"][0]["pid"] == 111
+
+
+def test_win_process_find_requires_name(monkeypatch):
+    win = load_plugin("jarvis-windows")
+    monkeypatch.setattr(win.tools.win, "IS_WINDOWS", True)
+    out = json.loads(win.tools.win_process({"action": "find"}))
+    assert out["success"] is False
+
+
+def test_win_process_kill_requires_confirmation(monkeypatch):
+    win = load_plugin("jarvis-windows")
+    monkeypatch.setattr(win.tools.win, "IS_WINDOWS", True)
+    out = json.loads(win.tools.win_process({"action": "kill", "pid": 123}))
+    assert out["success"] is False and "подтвержд" in out["error"]
+
+
+def test_win_process_kill_by_pid_calls_taskkill(monkeypatch):
+    win = load_plugin("jarvis-windows")
+    monkeypatch.setattr(win.tools.win, "IS_WINDOWS", True)
+    calls = []
+    monkeypatch.setattr(win.tools, "run", lambda cmd, **k: calls.append(cmd) or "SUCCESS")
+    out = json.loads(win.tools.win_process({"action": "kill", "pid": 999, "confirmed": True, "force": True}))
+    assert out["success"] is True
+    assert calls[0] == ["taskkill", "/F", "/PID", "999"]
+
+
+def test_win_process_kill_by_name_calls_taskkill(monkeypatch):
+    win = load_plugin("jarvis-windows")
+    monkeypatch.setattr(win.tools.win, "IS_WINDOWS", True)
+    calls = []
+    monkeypatch.setattr(win.tools, "run", lambda cmd, **k: calls.append(cmd) or "SUCCESS")
+    out = json.loads(win.tools.win_process({"action": "kill", "name": "chrome", "confirmed": True}))
+    assert out["success"] is True
+    assert calls[0] == ["taskkill", "/IM", "chrome.exe"]
+
+
 def test_windows_manifest_declares_no_macos_plugin_dependency():
     core_manifest = yaml.safe_load((PLUGINS / "jarvis-core" / "plugin.yaml").read_text(encoding="utf-8"))
     requires = core_manifest.get("requires_plugins", [])

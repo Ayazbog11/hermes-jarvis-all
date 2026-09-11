@@ -14,11 +14,15 @@ YAML — так не сломать формат, который поддерж�
   jarvis ollama status              — установлен/запущен ли Ollama, какие модели скачаны, что выбрано в Hermes
   jarvis ollama list                — только список скачанных моделей
   jarvis ollama pull <модель>       — скачать модель (напр. qwen3:8b, llama3.1:8b, qwen2.5vl:7b для зрения)
-  jarvis ollama use <модель> [--context N] [--vision]
+  jarvis ollama use <модель> [--context N] [--vision] [--no-verify]
                                      — прописать модель в Hermes: model.provider=custom,
                                        model.base_url=http://127.0.0.1:11434/v1, model.default=<модель>.
                                        --vision вместо основной модели настраивает auxiliary.vision
                                        (отдельная модель для распознавания экрана/фото — см. docs/AI-MODELS.md).
+                                       По умолчанию после переключения ОДИН РАЗ проверяется, что модель
+                                       реально отвечает (`hermes chat -q ...`); если нет — конфигурация
+                                       автоматически откатывается на значения ДО переключения (safe-switch,
+                                       --no-verify отключает эту проверку).
   jarvis ollama recommend           — напечатать 2-3 модели, которые стоит попробовать (баланс/зрение), с командой pull
 
 Работает без ключей и без интернета (кроме самого шага pull, который качает модель один раз).
@@ -198,7 +202,35 @@ def cmd_pull(args: argparse.Namespace) -> int:
     return pull(args.model)
 
 
+def ping_model(timeout: float = 60.0) -> tuple[bool, str]:
+    """Проверить, что модель, прописанная СЕЙЧАС в Hermes, реально отвечает.
+
+    Та же эвристика, что и scripts/doctor.py:check_model() — одна короткая реплика
+    и проверка на явные признаки ошибки (HTTP-коды, traceback, пустой ответ).
+    """
+    try:
+        proc = subprocess.run(["hermes", "chat", "-q", "Ответь одним словом: ok"],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    except (subprocess.SubprocessError, OSError) as e:
+        return False, f"hermes chat не запустился: {e}"
+    text = (proc.stdout or "").strip()
+    low = text.lower()
+    if proc.returncode != 0 or not text or any(k in low for k in ("error code", "http 4", "http 5", "traceback", "401", "403", "405", "429")):
+        return False, (text[-160:] or "пустой ответ")
+    return True, text[:160]
+
+
 def cmd_use(args: argparse.Namespace) -> int:
+    """Переключить модель Hermes на локальную через Ollama.
+
+    Безопасность (аудит GitHub, Раунд 7 — паттерн model-watchdog: снимок конфигурации перед
+    изменением, проверка здоровья, автооткат при отказе, без внешних зависимостей): перед
+    записью новых значений снимается снимок текущих ключей config.yaml; после записи (если
+    не --no-verify и не --vision — для vision-модели «пинг» текстовым чатом не показателен)
+    Hermes реально спрашивается один раз; если ответ похож на ошибку — все изменённые ключи
+    откатываются на снятые значения и команда завершается с ошибкой, а НЕ оставляет Hermes
+    с нерабочей моделью до следующего случайного открытия чата пользователем.
+    """
     if not is_running():
         print("✖ Ollama не запущен — сначала запустите приложение Ollama (или `ollama serve`)", file=sys.stderr)
         return 1
@@ -207,26 +239,64 @@ def cmd_use(args: argparse.Namespace) -> int:
         print(f"⚠ Модель {args.model!r} ещё не скачана. Скачиваю…")
         if pull(args.model) != 0:
             return 1
+
     if args.vision:
-        ok = (
-            hermes_config_set("auxiliary.vision.base_url", BASE_URL_FOR_HERMES)
-            and hermes_config_set("auxiliary.vision.api_key", "local-key")
-            and hermes_config_set("auxiliary.vision.model", args.model)
-        )
-        if ok:
-            print(f"✔ Модель для зрения (auxiliary.vision) теперь: {args.model} через Ollama ({BASE_URL_FOR_HERMES})")
-        return 0 if ok else 1
-    ok = (
-        hermes_config_set("model.provider", "custom")
-        and hermes_config_set("model.base_url", BASE_URL_FOR_HERMES)
-        and hermes_config_set("model.default", args.model)
-    )
-    if ok and args.context:
-        ok = hermes_config_set("model.context_length", str(args.context))
-    if ok:
+        keys = ["auxiliary.vision.base_url", "auxiliary.vision.api_key", "auxiliary.vision.model"]
+        values = [BASE_URL_FOR_HERMES, "local-key", args.model]
+    else:
+        keys = ["model.provider", "model.base_url", "model.default"]
+        values = ["custom", BASE_URL_FOR_HERMES, args.model]
+        if args.context:
+            keys.append("model.context_length")
+            values.append(str(args.context))
+
+    snapshot = {k: hermes_config_get(k) for k in keys}  # для отката — читаем ДО изменения
+
+    ok = True
+    for k, v in zip(keys, values, strict=True):
+        if not hermes_config_set(k, v):
+            ok = False
+            break
+    if not ok:
+        print("✖ Не удалось записать конфигурацию — откатываю уже изменённые ключи…", file=sys.stderr)
+        _restore_snapshot(snapshot)
+        return 1
+
+    verify = not args.no_verify and not args.vision  # для vision текстовый пинг ничего не проверяет
+    if verify:
+        print("Проверяю, что модель отвечает…")
+        healthy, detail = ping_model()
+        if not healthy:
+            print(f"✖ Модель {args.model!r} не отвечает ({detail}) — откатываю конфигурацию на прежние значения…",
+                  file=sys.stderr)
+            _restore_snapshot(snapshot)
+            print("✔ Откат выполнен, Hermes использует прежнюю модель.", file=sys.stderr)
+            return 1
+        print(f"✔ Модель отвечает: {detail}")
+
+    if args.vision:
+        print(f"✔ Модель для зрения (auxiliary.vision) теперь: {args.model} через Ollama ({BASE_URL_FOR_HERMES})")
+    else:
         print(f"✔ Hermes теперь использует локальную модель {args.model} через Ollama ({BASE_URL_FOR_HERMES}).")
         print("  Перезапустите gateway/TUI, чтобы изменение подхватилось: jarvis gateway restart")
-    return 0 if ok else 1
+    return 0
+
+
+def _restore_snapshot(snapshot: dict[str, str]) -> None:
+    """Вернуть ключи config.yaml к значениям ДО попытки переключения модели.
+
+    Пустая старая строка означает «ключ не был задан» — в этом случае Hermes'у нечего
+    восстанавливать надёжным способом через `config set` (нет команды unset в этом CLI),
+    поэтому такие ключи просто пропускаются с предупреждением: лучше оставить новое (уже
+    записанное, но нерабочее) значение видимым пользователю, чем тихо потерять информацию
+    о том, что откат был неполным.
+    """
+    for k, old in snapshot.items():
+        if old:
+            hermes_config_set(k, old)
+        else:
+            print(f"  (⚠ ключ {k} не был задан раньше — не откатываю, только что установленное значение останется)",
+                  file=sys.stderr)
 
 
 def main() -> int:
@@ -244,6 +314,9 @@ def main() -> int:
     p_use.add_argument("--context", type=int, default=0, help="context_length (напр. 32768) — Ollama по умолчанию режет контекст")
     p_use.add_argument("--vision", action="store_true", help="настроить как auxiliary.vision, а не основную модель чата")
     p_use.add_argument("--skip-check", action="store_true", help="не проверять/не докачивать модель перед использованием")
+    p_use.add_argument("--no-verify", action="store_true",
+                        help="не проверять реальный ответ модели после переключения (без этого — по умолчанию проверяется, "
+                             "и при отказе конфигурация автоматически откатывается на прежнюю модель)")
     p_use.set_defaults(func=cmd_use)
     args = ap.parse_args()
     return args.func(args)

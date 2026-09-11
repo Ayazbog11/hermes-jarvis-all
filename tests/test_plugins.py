@@ -50,7 +50,7 @@ def test_all_schemas_well_formed():
     for s in macos.schemas.ALL_SCHEMAS:
         _check_schema(s)
     for s in (core.schemas.JARVIS_HUD, core.schemas.JARVIS_TIMER, core.schemas.JARVIS_MODE, core.schemas.JARVIS_WEATHER,
-              core.schemas.JARVIS_CALENDAR):
+              core.schemas.JARVIS_CALENDAR, core.schemas.JARVIS_SEND_MESSAGE):
         _check_schema(s)
 
 
@@ -67,7 +67,8 @@ def test_macos_register(ctx):
 def test_core_register(ctx):
     core = load_plugin("jarvis-core")
     core.register(ctx)
-    assert {"jarvis_hud", "jarvis_timer", "jarvis_mode", "jarvis_weather", "jarvis_update", "jarvis_calendar"} == set(ctx.tools)
+    assert {"jarvis_hud", "jarvis_timer", "jarvis_mode", "jarvis_weather", "jarvis_update", "jarvis_calendar",
+            "jarvis_send_message", "jarvis_voice_note", "jarvis_working_memory"} == set(ctx.tools)
     for hook in ("pre_llm_call", "post_llm_call", "pre_tool_call", "post_tool_call", "on_session_start"):
         assert hook in ctx.hooks
     assert {"brief", "focus", "timer"} <= set(ctx.commands)
@@ -103,6 +104,40 @@ def test_applescript_disabled_by_default():
         pytest.skip("macOS only")
     out = json.loads(macos.tools.mac_applescript({"script": "return 1"}))
     assert out["success"] is False and "allow_raw_applescript" in out["error"]
+
+
+def test_mac_process_list_parses_ps_output(monkeypatch):
+    macos = load_plugin("jarvis-macos")
+    monkeypatch.setattr(macos.tools.mac, "IS_MAC", True)
+    monkeypatch.setattr(macos.tools, "run", lambda *a, **k: "PID  %CPU   RSS COMM\n1234  12.5 348224 Google Chrome\n5678   0.1  56320 Finder")
+    out = json.loads(macos.tools.mac_process({"action": "list"}))
+    assert out["success"] is True
+    assert out["processes"][0]["pid"] == 1234
+    assert out["processes"][0]["memory_mb"] == 340.1
+
+
+def test_mac_process_find_requires_name(monkeypatch):
+    macos = load_plugin("jarvis-macos")
+    monkeypatch.setattr(macos.tools.mac, "IS_MAC", True)
+    out = json.loads(macos.tools.mac_process({"action": "find"}))
+    assert out["success"] is False
+
+
+def test_mac_process_kill_requires_confirmation(monkeypatch):
+    macos = load_plugin("jarvis-macos")
+    monkeypatch.setattr(macos.tools.mac, "IS_MAC", True)
+    out = json.loads(macos.tools.mac_process({"action": "kill", "pid": 1}))
+    assert out["success"] is False and "подтвержд" in out["error"]
+
+
+def test_mac_process_kill_by_pid_calls_kill(monkeypatch):
+    macos = load_plugin("jarvis-macos")
+    monkeypatch.setattr(macos.tools.mac, "IS_MAC", True)
+    calls = []
+    monkeypatch.setattr(macos.tools, "run", lambda cmd, **k: calls.append(cmd) or "")
+    out = json.loads(macos.tools.mac_process({"action": "kill", "pid": 42, "confirmed": True, "force": True}))
+    assert out["success"] is True
+    assert calls[0] == ["kill", "-9", "42"]
 
 
 def test_resolve_target():

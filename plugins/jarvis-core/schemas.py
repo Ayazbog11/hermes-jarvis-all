@@ -1,5 +1,43 @@
 """Схемы инструментов ядра JARVIS."""
 
+JARVIS_VOICE_NOTE = {
+    "name": "jarvis_voice_note",
+    "description": (
+        "Создать голосовое сообщение (аудиофайл) из текста, используя тот же синтез речи, что и HUD "
+        "(edge-tts / системный голос). Возвращает путь к файлу — передай его в jarvis_send_message "
+        "(action=send_file) с тем же target, чтобы отправить голосовое в Telegram/Discord/и т.п. "
+        "Используй, когда пользователь просит «отправь голосовое», «озвучь и пришли», «скажи это в чат голосом»."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "Текст, который нужно озвучить (до ~1500 символов)"},
+        },
+        "required": ["text"],
+    },
+}
+
+JARVIS_WORKING_MEMORY = {
+    "name": "jarvis_working_memory",
+    "description": (
+        "Кратковременная «рабочая память» на 1-3 дня (идея из alex2772/kuni: things_to_remember) — "
+        "для незавершённых задач, обещаний и напоминаний «спроси завтра», которые ещё рано класть "
+        "в постоянную базу знаний (brain_remember), но забывать между сообщениями нельзя. "
+        "Записи сами исчезают через несколько дней (см. max_age_days), не засоряя память навсегда. "
+        "action=add — записать; action=list — посмотреть активные записи; action=clear — очистить всё "
+        "(используй, когда пользователь явно просит «забудь про текущие дела/задачи»)."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["add", "list", "clear"], "default": "list"},
+            "text": {"type": "string", "description": "Текст записи (для action=add) — короткая и самодостаточная фраза"},
+            "max_age_days": {"type": "number", "description": "Для action=list — сколько дней назад ещё считать актуальным (по умолчанию 3)"},
+        },
+        "required": ["action"],
+    },
+}
+
 JARVIS_HUD = {
     "name": "jarvis_hud",
     "description": (
@@ -108,3 +146,41 @@ JARVIS_CALENDAR = {
         "required": ["action"],
     },
 }
+
+JARVIS_SEND_MESSAGE = {
+    "name": "jarvis_send_message",
+    "description": (
+        "Отправить сообщение/файл/голосовое в мессенджер (Telegram, Discord, Slack, Signal, WhatsApp, SMS, "
+        "Matrix и др.), которые настроены у пользователя в Hermes gateway. list — показать доступные цели "
+        "(домашние каналы/чаты); send — отправить текст; send_file — отправить файл/фото/голосовое сообщение "
+        "(caption необязателен). Используй, когда пользователь прямо просит «отправь мне в телеграм…», "
+        "«пришли скриншот в дискорд…», «отправь голосовое …», «перешли это фото в Slack #канал…». "
+        "ВАЖНО: если пользователь называет конкретный канал/чат/человека (не просто платформу), сначала "
+        "вызови list, чтобы узнать точный target — не выдумывай chat_id/имя канала. Если платформа "
+        "не настроена или Hermes недоступен, инструмент вернёт success=false с понятной причиной — "
+        "объясни её пользователю, не пытайся угадать токен бота."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["send", "send_file", "list"], "default": "send"},
+            "target": {
+                "type": "string",
+                "description": "Куда отправить: 'telegram' (домашний канал), 'telegram:-100123456789', "
+                               "'discord:#ops', 'signal:+15551234567' и т.п. Для action=list — необязательный "
+                               "фильтр по имени платформы (например 'telegram').",
+            },
+            "text": {"type": "string", "description": "Текст сообщения (для action=send)"},
+            "subject": {"type": "string", "description": "Необязательный заголовок/тема перед текстом (для action=send)"},
+            "path": {
+                "type": "string",
+                "description": "Локальный путь к файлу/фото/голосовому/документу (для action=send_file) — "
+                               "например путь из mac_screenshot/win_screenshot/linux_screenshot, jarvis_image_generate "
+                               "или jarvis_voice_note.",
+            },
+            "caption": {"type": "string", "description": "Необязательная подпись к файлу (для action=send_file)"},
+        },
+        "required": ["action"],
+    },
+}
+

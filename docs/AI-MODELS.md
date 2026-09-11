@@ -92,11 +92,34 @@ Hermes уже пишет каждую сессию (модель, токены, 
 TokenTracker — все делают то же самое: читают уже существующие данные, а не создают новые). Стоимость
 `$0.00` обычно значит локальную модель через Ollama или провайдера, который не публикует цену для Hermes.
 
+## 4. HUD-панель «Модель ИИ» — переключение одной кнопкой
+
+Панель **«Модель ИИ»** на HUD (`hud/static/index.html`, эндпоинты `GET/POST /api/model` →
+`hud/model_switch.py`) показывает и позволяет менять сразу семь независимых полей, не открывая
+терминал и не редактируя `config.yaml` руками:
+
+| Поле в панели | Ключ `config.yaml` | Что определяет |
+|---|---|---|
+| Чат | `model.default` | основная модель разговора |
+| Зрение | `auxiliary.vision.model` | распознавание скриншотов/фото |
+| Сжатие истории | `auxiliary.compression.model` | сжатие длинного диалога |
+| Заголовки сессий | `auxiliary.title_generation.model` | автозаголовки в истории чатов |
+| Картинки: провайдер | `image_gen.provider` | `nous\|fal\|openai\|xai\|krea\|openrouter\|meta-ai\|openai-compatible` |
+| Картинки: модель | `image_gen.model` | конкретная модель генерации изображений |
+| Озвучка: провайдер | `tts.provider` | движок синтеза речи |
+
+Каждое поле сохраняется отдельным вызовом `hermes config set <ключ> <значение>` (как и
+`jarvis ollama use`) — редактируется только то поле, которое реально изменили, остальные не
+трогаются. Это тот же принцип «модель под задачу, а не одна на всё», что уже был у Hermes для
+`auxiliary.vision` — просто вынесенный в один экран вместо семи разных мест.
+
 ## Сводка: что где настраивается
 
 | Что | Команда/меню | Где хранится |
 |---|---|---|
-| Провайдер + ключ + модель чата | `hermes model` / трей «ИИ: ключи / модель / провайдер…» | `~/.hermes/config.yaml` (`model.*`), `~/.hermes/.env` |
-| Модель для зрения | `jarvis ollama use <модель> --vision` (локально) или ручная правка `config.yaml` / трей «ИИ: модель для зрения…» | `~/.hermes/config.yaml` (`auxiliary.vision.*`) |
+| Провайдер + ключ + модель чата | `hermes model` / трей «ИИ: ключи / модель / провайдер…» / HUD «Модель ИИ» | `~/.hermes/config.yaml` (`model.*`), `~/.hermes/.env` |
+| Модель для зрения | `jarvis ollama use <модель> --vision` (локально) или ручная правка `config.yaml` / трей «ИИ: модель для зрения…» / HUD «Модель ИИ» | `~/.hermes/config.yaml` (`auxiliary.vision.*`) |
+| Модель для картинок/озвучки | HUD «Модель ИИ» | `~/.hermes/config.yaml` (`image_gen.*`, `tts.provider`) |
 | Локальная модель (офлайн, без ключа) | `jarvis ollama pull/use` | Ollama (`~/.ollama/models`) + `~/.hermes/config.yaml` |
+| Отправить файл/фото/голосовое в мессенджер | `jarvis_send_message(action=send_file)` / `jarvis_voice_note` / HUD «🎙️» | `hermes send "MEDIA:<путь>"` |
 | Календарь | `jarvis calendar setup` | см. [docs/CALENDAR.md](CALENDAR.md) |

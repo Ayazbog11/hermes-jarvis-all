@@ -52,6 +52,56 @@ sys.path.insert(0, str(HERE))
 import sysinfo  # noqa: E402
 import tts  # noqa: E402 — серверный синтез речи (edge-tts / say) для POST /api/tts — живые данные виджетов (батарея, календарь, таймеры…); путь добавлен строкой выше
 
+
+def _prom_escape(label: str) -> str:
+    """Экранировать значение label для текстового формата Prometheus (кавычки/бэкслеш/перевод строки)."""
+    return str(label or "unknown").replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _import_by_path(module_name: str, *candidates: Path):
+    """Импортировать первый существующий файл из `candidates` как модуль `module_name`.
+
+    HUD раздаётся установщиком в разные каталоги относительно исходников-скриптов/плагинов
+    (см. install.sh/install.ps1: hud/ → $JARVIS_HOME/hud, scripts/*.py → $JARVIS_HOME/,
+    plugins/jarvis-core/ → $HERMES_HOME/plugins/jarvis-core), а в дереве репозитория (dev/тесты)
+    все они лежат рядом с hud/ на один уровень выше. Перебираем оба варианта; если файла нет
+    нигде — модуль остаётся недоступен (soft-degrade), HUD не должен падать из-за этого.
+    """
+    import importlib.util
+
+    for candidate in candidates:
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(module_name, candidate)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                return mod
+    return None
+
+
+usage_report = _import_by_path(
+    "jarvis_hud_usage_report",
+    HERE.parent / "usage_report.py",           # установлено: $JARVIS_HOME/usage_report.py (сосед hud/)
+    HERE.parent / "scripts" / "usage_report.py",  # дерево репозитория: scripts/usage_report.py
+)
+messenger = _import_by_path(
+    "jarvis_hud_messenger",
+    Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser() / "plugins" / "jarvis-core" / "messenger.py",
+    HERE.parent / "plugins" / "jarvis-core" / "messenger.py",       # дерево репозитория (hud/ и plugins/ — соседи)
+    HERE.parent.parent / "plugins" / "jarvis-core" / "messenger.py",  # дерево репозитория (запуск из scripts/ рядом)
+)
+voice_note = _import_by_path(
+    "jarvis_hud_voice_note",
+    Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser() / "plugins" / "jarvis-core" / "voice_note.py",
+    HERE.parent / "plugins" / "jarvis-core" / "voice_note.py",
+    HERE.parent.parent / "plugins" / "jarvis-core" / "voice_note.py",
+)
+model_switch = _import_by_path(
+    "jarvis_hud_model_switch",
+    HERE.parent / "model_switch.py",              # установлено: $JARVIS_HOME/model_switch.py (сосед hud/)
+    HERE.parent / "scripts" / "model_switch.py",   # дерево репозитория: scripts/model_switch.py
+)
+
 DASH: sysinfo.Collector | None = None
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
 
@@ -284,6 +334,14 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
+    def _text(self, code: int, body: str, ctype: str = "text/plain; charset=utf-8") -> None:
+        data = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _send_file(self, path: Path, ctype: str | None = None, extra_headers: dict | None = None) -> None:
         if not path.exists() or not path.is_file():
             self._json(404, {"error": "not found"})
@@ -325,6 +383,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, brain_overview(parse_qs(u.query).get("q", [""])[0]))
         if u.path == "/api/dashboard":
             return self._json(200, DASH.snapshot() if DASH else {})
+        if u.path == "/api/usage":
+            return self._usage(parse_qs(u.query))
+        if u.path == "/metrics":
+            return self._metrics(parse_qs(u.query))
+        if u.path == "/api/send/targets":
+            return self._send_targets(parse_qs(u.query).get("platform", [""])[0])
+        if u.path == "/api/model":
+            return self._model_get()
         if u.path == "/file":
             p = parse_qs(u.query).get("path", [""])[0]
             real = os.path.realpath(os.path.expanduser(p))
@@ -376,6 +442,12 @@ class Handler(BaseHTTPRequestHandler):
             sysinfo.set_mode(mode)
             BUS.publish({"event": "mode.set", "data": {"mode": mode, "source": "hud"}})
             return self._json(200, {"ok": True, "mode": mode})
+        if u.path == "/api/send":
+            return self._send(self._read_json())
+        if u.path == "/api/send/voice":
+            return self._send_voice(self._read_json())
+        if u.path == "/api/model":
+            return self._model_set(self._read_json())
         return self._json(404, {"error": "not found"})
 
     def _tts(self, body: dict) -> None:
@@ -425,6 +497,135 @@ class Handler(BaseHTTPRequestHandler):
             BUS.publish({"event": "timer.update", "data": {"timers": sysinfo.timers()}})
             return self._json(200, {"ok": True, "label": label, "target": target.isoformat()})
         return self._json(400, {"error": "action: set|cancel"})
+
+    # ── Использование/стоимость (панель «Расход») ──────────────────────────
+    def _usage(self, query: dict) -> None:
+        """GET /api/usage[?since=7] — та же сводка, что и CLI `jarvis usage`, для виджета HUD.
+
+        Переиспользует scripts/usage_report.py:collect() (READ-ONLY чтение $HERMES_HOME/state.db),
+        чтобы не дублировать SQL и логику агрегации в двух местах.
+        """
+        if usage_report is None:
+            return self._json(200, {"ok": False, "error": "usage_report.py недоступен"})
+        since_raw = (query.get("since") or ["30"])[0]
+        try:
+            since_ts = usage_report._parse_since(since_raw)
+        except usage_report.UsageError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        try:
+            data = usage_report.collect(since_ts)
+        except usage_report.UsageError as e:
+            return self._json(200, {"ok": False, "error": str(e)})
+        return self._json(200, {"ok": True, **data})
+
+    def _metrics(self, query: dict) -> None:
+        """GET /metrics[?since=1] — токены/стоимость в текстовом формате Prometheus (`llm_usage_*`,
+
+        по label `model`), для scrape тем же Prometheus-сервером, что описан в docker-compose.yml
+        alex2772/kuni (см. docs/RESEARCH.md, Раунд 7): там свой C++-счётчик по `chat`/`function`,
+        здесь — то же самое как READ-ONLY срез поверх уже существующего $HERMES_HOME/state.db
+        (usage_report.collect(), тот же источник, что у `jarvis usage` и HUD-панели «Расход»), без
+        отдельного демона метрик и без изменения формата хранения Hermes. По умолчанию — за сегодня,
+        чтобы counter'ы вели себя предсказуемо между последовательными scrape (Prometheus сам считает
+        дельты); `?since=N` — за N дней, как у /api/usage.
+        """
+        if usage_report is None:
+            return self._text(200, "# usage_report.py недоступен\n")
+        since_raw = (query.get("since") or ["1"])[0]
+        try:
+            since_ts = usage_report._parse_since(since_raw)
+            data = usage_report.collect(since_ts)
+        except usage_report.UsageError as e:
+            return self._text(200, f"# ошибка чтения state.db: {e}\n")
+        lines = [
+            "# HELP jarvis_llm_usage_input_tokens_total Входные токены, потраченные на модель (см. docs/AI-MODELS.md).",
+            "# TYPE jarvis_llm_usage_input_tokens_total counter",
+        ]
+        for model, m in data.get("by_model", {}).items():
+            lines.append(f'jarvis_llm_usage_input_tokens_total{{model="{_prom_escape(model)}"}} {m.get("input_tokens", 0)}')
+        lines += [
+            "# HELP jarvis_llm_usage_output_tokens_total Выходные токены, сгенерированные моделью.",
+            "# TYPE jarvis_llm_usage_output_tokens_total counter",
+        ]
+        for model, m in data.get("by_model", {}).items():
+            lines.append(f'jarvis_llm_usage_output_tokens_total{{model="{_prom_escape(model)}"}} {m.get("output_tokens", 0)}')
+        lines += [
+            "# HELP jarvis_llm_usage_cost_usd_total Оценочная стоимость запросов в USD.",
+            "# TYPE jarvis_llm_usage_cost_usd_total counter",
+        ]
+        for model, m in data.get("by_model", {}).items():
+            lines.append(f'jarvis_llm_usage_cost_usd_total{{model="{_prom_escape(model)}"}} {m.get("cost_usd", 0.0)}')
+        lines += [
+            "# HELP jarvis_llm_sessions_total Число сессий (ходов) с моделью.",
+            "# TYPE jarvis_llm_sessions_total counter",
+        ]
+        for model, m in data.get("by_model", {}).items():
+            lines.append(f'jarvis_llm_sessions_total{{model="{_prom_escape(model)}"}} {m.get("sessions", 0)}')
+        return self._text(200, "\n".join(lines) + "\n", ctype="text/plain; version=0.0.4; charset=utf-8")
+
+    # ── Отправка сообщений в мессенджеры (панель «Отправить») ──────────────
+    def _send_targets(self, platform: str) -> None:
+        """GET /api/send/targets[?platform=telegram] — список настроенных целей (`hermes send --list`)."""
+        if messenger is None:
+            return self._json(200, {"success": False, "error": "messenger.py недоступен"})
+        return self._json(200, messenger.list_targets(platform=(platform or "").strip() or None))
+
+    def _send(self, body: dict) -> None:
+        """POST /api/send {target, text, subject?} — обёртка над messenger.send() (см. plugins/jarvis-core/messenger.py).
+
+        Та же логика, что и инструмент jarvis_send_message для LLM — здесь просто открыт прямой путь
+        из HUD, без обязательного похода через чат/модель, когда пользователь просто хочет ткнуть кнопку.
+        """
+        if messenger is None:
+            return self._json(200, {"success": False, "error": "messenger.py недоступен"})
+        target = str(body.get("target") or "").strip()
+        text = str(body.get("text") or "").strip()
+        if not target or not text:
+            return self._json(400, {"success": False, "error": "нужны target и text"})
+        result = messenger.send(target, text, subject=(body.get("subject") or None) or None)
+        BUS.publish({"event": "message.sent", "data": {"target": target, "success": result.get("success", False)}})
+        return self._json(200, result)
+
+    def _send_voice(self, body: dict) -> None:
+        """POST /api/send/voice {target, text, caption?} — озвучить текст (voice_note.generate) и
+
+        отправить получившийся файл через messenger.send_file(). Тот же путь, что использует LLM
+        через связку jarvis_voice_note + jarvis_send_message(action=send_file), просто одной кнопкой из HUD.
+        """
+        if voice_note is None:
+            return self._json(200, {"success": False, "error": "voice_note.py недоступен"})
+        if messenger is None:
+            return self._json(200, {"success": False, "error": "messenger.py недоступен"})
+        target = str(body.get("target") or "").strip()
+        text = str(body.get("text") or "").strip()
+        if not target or not text:
+            return self._json(400, {"success": False, "error": "нужны target и text"})
+        gen = voice_note.generate(text)
+        if not gen.get("success"):
+            return self._json(200, gen)
+        result = messenger.send_file(target, gen["path"], caption=(body.get("caption") or None) or None)
+        BUS.publish({"event": "message.sent", "data": {"target": target, "success": result.get("success", False), "kind": "voice"}})
+        return self._json(200, result)
+
+    # ── Выбор модели ИИ по задаче (панель «Модели») ─────────────────────────
+    def _model_get(self) -> None:
+        """GET /api/model — текущие значения model.default/auxiliary.*/image_gen.*/tts.provider."""
+        if model_switch is None:
+            return self._json(200, {"success": False, "error": "model_switch.py недоступен"})
+        return self._json(200, model_switch.get_all())
+
+    def _model_set(self, body: dict) -> None:
+        """POST /api/model {field, value} — `hermes config set <ключ> <value>` для одного из
+
+        разрешённых полей (model_switch.ALLOWED_KEYS) — чат/vision/сжатие/заголовки/картинки/озвучка
+        независимо друг от друга, как задумано в Hermes (см. docs/AI-MODELS.md)."""
+        if model_switch is None:
+            return self._json(200, {"success": False, "error": "model_switch.py недоступен"})
+        field = str(body.get("field") or "").strip()
+        value = str(body.get("value") or "").strip()
+        result = model_switch.set_value(field, value)
+        BUS.publish({"event": "model.set", "data": {"field": field, "success": result.get("success", False)}})
+        return self._json(200, result)
 
     def do_OPTIONS(self):
         # CORS-preflight сознательно не разрешаем: HUD — same-origin приложение

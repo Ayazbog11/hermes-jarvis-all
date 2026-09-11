@@ -132,6 +132,30 @@ WIN_POWER = {
     },
 }
 
+WIN_PROCESS = {
+    "name": "win_process",
+    "description": (
+        "Процессы Windows: list — топ процессов по CPU/памяти; find — найти процесс по имени; "
+        "kill — завершить процесс по PID или имени (аналог Диспетчера задач). Используй для «завис Chrome, "
+        "закрой его насильно», «что грузит процессор», «сколько памяти ест эта программа». Для kill "
+        "ОБЯЗАТЕЛЬНО сначала переспроси пользователя и передай confirmed=true — завершение процесса может "
+        "привести к потере несохранённых данных."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["list", "find", "kill"]},
+            "sort_by": {"type": "string", "enum": ["cpu", "memory"], "default": "cpu", "description": "Для list"},
+            "limit": {"type": "integer", "default": 12, "description": "Для list"},
+            "name": {"type": "string", "description": "Имя процесса (для find/kill по имени), без .exe"},
+            "pid": {"type": "integer", "description": "PID (для kill по конкретному процессу)"},
+            "force": {"type": "boolean", "default": False, "description": "Принудительное завершение (аналог /F в taskkill)"},
+            "confirmed": {"type": "boolean", "default": False, "description": "true только если пользователь явно подтвердил kill"},
+        },
+        "required": ["action"],
+    },
+}
+
 WIN_WIFI = {
     "name": "win_wifi",
     "description": "Wi-Fi: включить, выключить, узнать текущую сеть/состояние (через netsh).",
@@ -435,7 +459,7 @@ WIN_POWERSHELL = {
 
 ALL_SCHEMAS = [
     WIN_APP, WIN_OPEN, WIN_SEARCH, WIN_EXPLORER,
-    WIN_VOLUME, WIN_BRIGHTNESS, WIN_DARK_MODE, WIN_POWER, WIN_WIFI, WIN_BLUETOOTH, WIN_BATTERY, WIN_SYSTEM_INFO,
+    WIN_VOLUME, WIN_BRIGHTNESS, WIN_DARK_MODE, WIN_POWER, WIN_PROCESS, WIN_WIFI, WIN_BLUETOOTH, WIN_BATTERY, WIN_SYSTEM_INFO,
     WIN_MEDIA, WIN_SAY, WIN_NOTIFY, WIN_SCREENSHOT, WIN_CAMERA_SNAP, WIN_WALLPAPER, WIN_FILE_MANAGE, WIN_CONTACTS, WIN_FOCUS,
     WIN_CALENDAR, WIN_REMINDERS, WIN_NOTES, WIN_CLIPBOARD, WIN_TYPE, WIN_WINDOW, WIN_SHORTCUT, WIN_POWERSHELL,
 ]

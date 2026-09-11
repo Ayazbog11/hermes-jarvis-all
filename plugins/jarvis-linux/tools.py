@@ -346,6 +346,51 @@ def linux_power(args: dict) -> str:
 
 
 @guarded
+def linux_process(args: dict) -> str:
+    action = args.get("action")
+    if action == "list":
+        by_memory = (args.get("sort_by") or "cpu") == "memory"
+        limit = int(args.get("limit") or 12)
+        sort_key = "-%mem" if by_memory else "-%cpu"
+        out = run(["bash", "-c", f"ps -eo pid,pcpu,rss,comm --sort={sort_key} | tail -n +2 | head -{limit}"], check=False)
+        procs = []
+        for line in out.splitlines():
+            parts = line.split(None, 3)
+            if len(parts) == 4:
+                pid, cpu, rss_kb, name = parts
+                try:
+                    procs.append({"pid": int(pid), "name": name, "cpu_percent": float(cpu), "memory_mb": round(int(rss_kb) / 1024, 1)})
+                except ValueError:
+                    continue
+        return json_ok(processes=procs, sorted_by=args.get("sort_by") or "cpu")
+    if action == "find":
+        name = (args.get("name") or "").strip()
+        if not name:
+            return json_err("Укажите name")
+        out = run(["pgrep", "-fli", name], check=False)
+        procs = []
+        for line in out.splitlines():
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                procs.append({"pid": int(parts[0]), "name": parts[1]})
+        return json_ok(query=name, count=len(procs), processes=procs)
+    if action == "kill":
+        if not args.get("confirmed"):
+            return json_err("Завершение процесса требует явного подтверждения пользователя. Переспросите и передайте confirmed=true.")
+        pid = args.get("pid")
+        name = (args.get("name") or "").strip()
+        if not pid and not name:
+            return json_err("Укажите pid или name")
+        sig = "-9" if args.get("force") else "-15"
+        if pid:
+            run(["kill", sig, str(int(pid))], check=False)
+        else:
+            run(["pkill", sig, "-f", name], check=False)
+        return json_ok(killed=pid or name)
+    return json_err(f"Неизвестное действие: {action}")
+
+
+@guarded
 def linux_wifi(args: dict) -> str:
     action = args.get("action")
     if not which("nmcli"):
@@ -903,6 +948,7 @@ HANDLERS = {
     "linux_brightness": linux_brightness,
     "linux_dark_mode": linux_dark_mode,
     "linux_power": linux_power,
+    "linux_process": linux_process,
     "linux_wifi": linux_wifi,
     "linux_bluetooth": linux_bluetooth,
     "linux_battery": linux_battery,

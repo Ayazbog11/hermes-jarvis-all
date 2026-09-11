@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
   ═══════════════════════════════════════════════════════════════════════════
    J.A.R.V.I.S. on Hermes Agent — установщик для Windows 10/11 (native, без WSL)
@@ -250,7 +250,7 @@ $hudDst = Join-Path $JarvisHomeDir "hud"
 Remove-Item -Recurse -Force $hudDst -ErrorAction SilentlyContinue
 Copy-Item -Recurse -Force (Join-Path $JarvisSrc "hud") $hudDst
 Copy-Item (Join-Path $JarvisSrc "config\config.jarvis.windows.yaml") (Join-Path $JarvisHomeDir "config.jarvis.yaml") -Force
-foreach ($f in @("merge_config.py", "selftest.py", "update.py", "doctor.py", "make_shortcuts.py", "setup_scheduled_tasks.py", "calendar_cli.py", "ollama_local.py", "usage_report.py")) {
+foreach ($f in @("merge_config.py", "selftest.py", "update.py", "doctor.py", "make_shortcuts.py", "setup_scheduled_tasks.py", "calendar_cli.py", "ollama_local.py", "usage_report.py", "model_switch.py")) {
     Copy-Item (Join-Path $JarvisSrc "scripts\$f") (Join-Path $JarvisHomeDir $f) -Force
 }
 Copy-Item (Join-Path $JarvisSrc "scripts\setup_cron.ps1") (Join-Path $JarvisHomeDir "setup_cron.ps1") -Force

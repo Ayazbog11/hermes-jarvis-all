@@ -232,6 +232,23 @@
       <div class="hd"><span class="tile"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v16H6.5A2.5 2.5 0 0 0 4 21z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v16h5.5a2.5 2.5 0 0 1 2.5 2z"/></svg></span><h2>Знания</h2><button class="more" id="knowOpen" title="Открыть базу знаний (K)"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
       <div class="bd" id="knowBody"></div>
     </section>
+    <section class="card" id="cardSend">
+      <div class="hd"><span class="tile violet"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></span><h2>Отправить сообщение</h2></div>
+      <div class="bd" id="sendBody">
+        <form class="tform show" id="sendForm" style="flex-direction:column;align-items:stretch">
+          <input id="sendTarget" placeholder="Куда: telegram, discord:#канал…" autocomplete="off">
+          <input id="sendText" placeholder="Текст сообщения" autocomplete="off">
+        </form>
+      </div>
+      <div class="ft" style="display:flex;gap:8px">
+        <button id="sendBtn" style="flex:1"><span style="display:flex;align-items:center;gap:10px"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>Отправить</span></button>
+        <button id="sendVoiceBtn" title="Отправить как голосовое сообщение (озвучить текст и отправить файлом)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      </div>
+    </section>
+    <section class="card" id="cardModel">
+      <div class="hd"><span class="tile amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></span><h2>Модель ИИ</h2><button class="more" id="modelRefresh" title="Обновить"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
+      <div class="bd" id="modelBody"><div class="empty">Загрузка…</div></div>
+    </section>
   </div>
 
   <div id="center">
@@ -263,6 +280,10 @@
       <div class="bd" id="timersBody"></div>
       <form class="tform" id="tform"><input class="n" id="tMin" type="number" min="1" max="1440" placeholder="мин"><input id="tLabel" placeholder="Название"><button type="submit">Ок</button></form>
       <div class="ft"><button id="timerAdd"><span style="display:flex;align-items:center;gap:10px"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Добавить таймер</span></button></div>
+    </section>
+    <section class="card" id="cardUsage">
+      <div class="hd"><span class="tile amber"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><h2>Расход (30д)</h2><button class="more" id="usageRefresh" title="Обновить"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button></div>
+      <div class="bd" id="usageBody"><div class="empty">Загрузка…</div></div>
     </section>
   </div>
 </div>
@@ -434,6 +455,87 @@
   function renderAll(){ renderCalendar(); renderKnowledge(); renderSystem(); renderTimers(); }
   async function loadDash(){ try { dash = await (await fetch('/api/dashboard')).json(); renderAll(); } catch {} }
   loadDash(); setInterval(loadDash, 30000);
+
+  // ── «Расход» — токены/стоимость за 30 дней (jarvis usage, см. scripts/usage_report.py) ──
+  async function loadUsage(){
+    const b = $('#usageBody');
+    try {
+      const j = await (await fetch('/api/usage?since=30')).json();
+      if (!j.ok) { b.innerHTML = `<div class="empty">Нет данных: ${esc(j.error||'—')}</div>`; return; }
+      const t = j.total || {sessions:0, input_tokens:0, output_tokens:0, cost_usd:0};
+      const cost = t.cost_usd ? '$' + t.cost_usd.toFixed(2) : '$0.00';
+      const models = Object.entries(j.by_model||{}).sort((a,b)=>b[1].cost_usd-a[1].cost_usd).slice(0,3);
+      b.innerHTML = `<div class="stats"><div class="stat"><small>Сессий</small><b>${t.sessions}</b></div>`
+        + `<div class="stat"><small>Стоимость</small><b>${cost}</b></div></div>`
+        + `<div class="kbase"><div class="l"><span>Токены (вход/выход)</span><b>${(t.input_tokens||0).toLocaleString('ru-RU')} / ${(t.output_tokens||0).toLocaleString('ru-RU')}</b></div></div>`
+        + (models.length ? models.map(([name,m]) => `<div class="row"><span class="tx"><b>${esc(name)}</b><small>${m.sessions} сесс.</small></span><span class="rt">${m.cost_usd?'$'+m.cost_usd.toFixed(2):'—'}</span></div>`).join('') : '');
+    } catch { b.innerHTML = '<div class="empty">HUD не смог прочитать локальную статистику</div>'; }
+  }
+  loadUsage(); setInterval(loadUsage, 60000);
+  $('#usageRefresh').onclick = loadUsage;
+
+  // ── «Отправить сообщение» — тонкая обёртка над hermes send (см. plugins/jarvis-core/messenger.py) ──
+  async function sendMessage(){
+    const targetEl = $('#sendTarget'), textEl = $('#sendText'), btn = $('#sendBtn');
+    const target = targetEl.value.trim(), text = textEl.value.trim();
+    if (!target || !text) { toast('Укажите цель и текст сообщения', 'bell', 'amber'); return; }
+    btn.disabled = true;
+    try {
+      const r = await post('/api/send', {target, text});
+      if (r.success) { toast(`Отправлено → ${target}`, 'bolt', 'green'); textEl.value = ''; }
+      else toast(`Не удалось отправить: ${r.error||'неизвестная ошибка'}`, 'bell', 'amber', 15);
+    } catch { toast('HUD не смог связаться с Hermes', 'bell', 'amber'); }
+    finally { btn.disabled = false; }
+  }
+  $('#sendBtn').onclick = sendMessage;
+  $('#sendText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(); } });
+
+  // ── «Голосовое» — озвучить текст (edge-tts/say/SAPI/espeak) и отправить файлом ──
+  async function sendVoice(){
+    const targetEl = $('#sendTarget'), textEl = $('#sendText'), btn = $('#sendVoiceBtn');
+    const target = targetEl.value.trim(), text = textEl.value.trim();
+    if (!target || !text) { toast('Укажите цель и текст сообщения', 'bell', 'amber'); return; }
+    btn.disabled = true;
+    try {
+      const r = await post('/api/send/voice', {target, text});
+      if (r.success) { toast(`Голосовое отправлено → ${target}`, 'bolt', 'green'); textEl.value = ''; }
+      else toast(`Не удалось отправить голосовое: ${r.error||'неизвестная ошибка'}`, 'bell', 'amber', 15);
+    } catch { toast('HUD не смог связаться с Hermes', 'bell', 'amber'); }
+    finally { btn.disabled = false; }
+  }
+  $('#sendVoiceBtn').onclick = sendVoice;
+
+  // ── «Модель ИИ» — выбор модели чата/зрения/картинок/озвучки по задаче (hermes config) ──
+  const MODEL_LABELS = {chat_model:'Чат', vision_model:'Зрение', compression_model:'Сжатие истории',
+                         title_model:'Заголовки сессий', image_provider:'Картинки: провайдер', image_model:'Картинки: модель', tts_provider:'Озвучка: провайдер'};
+  async function loadModels(){
+    const b = $('#modelBody');
+    try {
+      const j = await (await fetch('/api/model')).json();
+      if (!j.success) { b.innerHTML = `<div class="empty">${esc(j.error||'model_switch недоступен')}</div>`; return; }
+      b.innerHTML = Object.entries(MODEL_LABELS).map(([field,label]) => `
+        <div class="kv" style="align-items:center;gap:6px">
+          <span style="min-width:120px">${label}</span>
+          <input class="mfield" data-field="${field}" placeholder="${esc((j.fields||{})[field]||'')}" value="${esc((j.values||{})[field]||'')}" style="flex:1;min-width:0">
+        </div>`).join('') + '<div class="ft" style="padding-top:8px"><button id="modelSaveBtn" style="width:100%">Сохранить изменённые</button></div>';
+      $('#modelSaveBtn').onclick = async () => {
+        const inputs = [...b.querySelectorAll('.mfield')];
+        let changed = 0, failed = 0;
+        for (const inp of inputs) {
+          const val = inp.value.trim();
+          if (!val || val === ((j.values||{})[inp.dataset.field]||'')) continue;
+          changed++;
+          const r = await post('/api/model', {field: inp.dataset.field, value: val});
+          if (!r.success) { failed++; toast(`${MODEL_LABELS[inp.dataset.field]}: ${r.error||'ошибка'}`, 'bell', 'amber', 15); }
+        }
+        if (changed && !failed) toast('Модели обновлены', 'bolt', 'green');
+        else if (!changed) toast('Нет изменений', 'bell', 'amber');
+        loadModels();
+      };
+    } catch { b.innerHTML = '<div class="empty">HUD не смог прочитать настройки модели</div>'; }
+  }
+  loadModels();
+  $('#modelRefresh').onclick = loadModels;
 
   $('#calRefresh').onclick = loadDash;
   $('#calAll').onclick = () => send('Что у меня сегодня и завтра по календарю? Кратко, по времени.');

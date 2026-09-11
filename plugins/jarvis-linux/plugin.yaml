@@ -17,6 +17,7 @@ provides_tools:
   - linux_brightness
   - linux_dark_mode
   - linux_power
+  - linux_process
   - linux_wifi
   - linux_bluetooth
   - linux_battery

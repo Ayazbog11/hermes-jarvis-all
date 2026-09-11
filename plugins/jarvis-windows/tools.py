@@ -314,6 +314,51 @@ def win_power(args: dict) -> str:
 
 
 @guarded
+def win_process(args: dict) -> str:
+    action = args.get("action")
+    if action == "list":
+        sort_by = "CPU" if (args.get("sort_by") or "cpu") == "cpu" else "WorkingSet"
+        limit = int(args.get("limit") or 12)
+        out = powershell(
+            f"Get-Process | Sort-Object {sort_by} -Descending | Select-Object -First {limit} -Property Id,ProcessName,CPU,WorkingSet | "
+            "ForEach-Object { \"$($_.Id)|$($_.ProcessName)|$([math]::Round($_.CPU,1))|$([math]::Round($_.WorkingSet/1MB,1))\" }",
+            check=False,
+        )
+        procs = []
+        for line in win.safe_list(out.splitlines()):
+            parts = line.split("|")
+            if len(parts) == 4:
+                pid, name, cpu, mem_mb = parts
+                procs.append({"pid": int(pid), "name": name, "cpu_seconds": float(cpu or 0), "memory_mb": float(mem_mb or 0)})
+        return json_ok(processes=procs, sorted_by=args.get("sort_by") or "cpu")
+    if action == "find":
+        name = (args.get("name") or "").strip()
+        if not name:
+            return json_err("Укажите name")
+        out = powershell(
+            f"Get-Process -Name {as_ps(name.replace('.exe', ''))}* -ErrorAction SilentlyContinue | "
+            "Select-Object -Property Id,ProcessName | ForEach-Object { \"$($_.Id)|$($_.ProcessName)\" }",
+            check=False,
+        )
+        procs = [{"pid": int(p.split("|")[0]), "name": p.split("|")[1]} for p in win.safe_list(out.splitlines()) if "|" in p]
+        return json_ok(query=name, count=len(procs), processes=procs)
+    if action == "kill":
+        if not args.get("confirmed"):
+            return json_err("Завершение процесса требует явного подтверждения пользователя. Переспросите и передайте confirmed=true.")
+        pid = args.get("pid")
+        name = (args.get("name") or "").strip()
+        if not pid and not name:
+            return json_err("Укажите pid или name")
+        cmd = ["taskkill"]
+        if args.get("force"):
+            cmd.append("/F")
+        cmd += ["/PID", str(int(pid))] if pid else ["/IM", f"{name}.exe" if not name.lower().endswith(".exe") else name]
+        out = run(cmd, check=False)
+        return json_ok(killed=pid or name, output=out)
+    return json_err(f"Неизвестное действие: {action}")
+
+
+@guarded
 def win_wifi(args: dict) -> str:
     action = args.get("action")
     if action in ("on", "off"):
@@ -1050,6 +1095,7 @@ HANDLERS = {
     "win_brightness": win_brightness,
     "win_dark_mode": win_dark_mode,
     "win_power": win_power,
+    "win_process": win_process,
     "win_wifi": win_wifi,
     "win_bluetooth": win_bluetooth,
     "win_battery": win_battery,

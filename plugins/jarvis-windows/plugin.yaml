@@ -17,6 +17,7 @@ provides_tools:
   - win_brightness
   - win_dark_mode
   - win_power
+  - win_process
   - win_wifi
   - win_bluetooth
   - win_battery

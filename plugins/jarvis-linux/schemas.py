@@ -129,6 +129,30 @@ LINUX_POWER = {
     },
 }
 
+LINUX_PROCESS = {
+    "name": "linux_process",
+    "description": (
+        "Процессы Linux: list — топ процессов по CPU/памяти; find — найти процесс по имени; "
+        "kill — завершить процесс по PID или имени (аналог htop/System Monitor). Используй для «завис Firefox, "
+        "закрой его насильно», «что грузит процессор», «сколько памяти ест эта программа». Для kill "
+        "ОБЯЗАТЕЛЬНО сначала переспроси пользователя и передай confirmed=true — завершение процесса может "
+        "привести к потере несохранённых данных."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["list", "find", "kill"]},
+            "sort_by": {"type": "string", "enum": ["cpu", "memory"], "default": "cpu", "description": "Для list"},
+            "limit": {"type": "integer", "default": 12, "description": "Для list"},
+            "name": {"type": "string", "description": "Имя процесса (для find/kill по имени)"},
+            "pid": {"type": "integer", "description": "PID (для kill по конкретному процессу)"},
+            "force": {"type": "boolean", "default": False, "description": "Принудительное завершение (kill -9 / SIGKILL)"},
+            "confirmed": {"type": "boolean", "default": False, "description": "true только если пользователь явно подтвердил kill"},
+        },
+        "required": ["action"],
+    },
+}
+
 LINUX_WIFI = {
     "name": "linux_wifi",
     "description": "Wi-Fi: включить, выключить, узнать текущую сеть/состояние (через nmcli, NetworkManager).",
@@ -409,7 +433,7 @@ LINUX_SHELL = {
 
 ALL_SCHEMAS = [
     LINUX_APP, LINUX_OPEN, LINUX_SEARCH, LINUX_FILES,
-    LINUX_VOLUME, LINUX_BRIGHTNESS, LINUX_DARK_MODE, LINUX_POWER, LINUX_WIFI, LINUX_BLUETOOTH, LINUX_BATTERY, LINUX_SYSTEM_INFO,
+    LINUX_VOLUME, LINUX_BRIGHTNESS, LINUX_DARK_MODE, LINUX_POWER, LINUX_PROCESS, LINUX_WIFI, LINUX_BLUETOOTH, LINUX_BATTERY, LINUX_SYSTEM_INFO,
     LINUX_MEDIA, LINUX_SAY, LINUX_NOTIFY, LINUX_SCREENSHOT, LINUX_CAMERA_SNAP, LINUX_WALLPAPER, LINUX_FILE_MANAGE, LINUX_FOCUS,
     LINUX_CALENDAR, LINUX_REMINDERS, LINUX_NOTES, LINUX_CLIPBOARD, LINUX_TYPE, LINUX_WINDOW, LINUX_SHORTCUT, LINUX_SHELL,
 ]
