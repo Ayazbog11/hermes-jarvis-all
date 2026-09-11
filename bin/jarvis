@@ -5,7 +5,11 @@
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 HERMES_HOME="${HERMES_HOME:-__HERMES_HOME__}"
-PY="__PYTHON__"; [[ -x "$PY" ]] || PY="$(command -v python3)"
+# command -v может ничего не найти (пустой $PATH в тестах/некоторых окружениях) — под set -e
+# это завершило бы весь скрипт ещё до разбора команды, даже для help/version, которым Python
+# не нужен вовсе. Резолвим мягко: пустая строка ниже, если python3 действительно не найден —
+# тогда упадёт только та ветка, которая реально попытается его запустить.
+PY="__PYTHON__"; [[ -x "$PY" ]] || PY="$(command -v python3 || true)"
 JARVIS_HOME="$HERMES_HOME/jarvis"
 HUD_PORT="${JARVIS_HUD_PORT:-8765}"
 HUD_PID="$HERMES_HOME/jarvis/hud.pid"
