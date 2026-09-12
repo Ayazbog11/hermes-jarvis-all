@@ -277,25 +277,44 @@ def check_hud(fix: bool) -> Check:
 def check_launchd(fix: bool) -> Check:
     if IS_WINDOWS:
         c = Check("Автозапуск (Scheduled Tasks)")
+        # Список задач держим в одном месте (setup_scheduled_tasks.TASKS), а не дублируем
+        # литералом здесь — раньше список из 4 имён был продублирован вручную в этой функции,
+        # и если кто-то добавлял/переименовывал задачу в setup_scheduled_tasks.py, doctor молча
+        # продолжал сверяться со старым списком.
+        try:
+            sys.path.insert(0, str(JARVIS_HOME))
+            from setup_scheduled_tasks import TASKS as ALL_TASKS
+        except Exception:
+            ALL_TASKS = ("JARVIS-HUD", "JARVIS-Gateway", "JARVIS-Updater", "JARVIS-App")
         code, out = sh(["schtasks", "/Query", "/FO", "LIST"], timeout=15)
-        tasks = [t for t in ("JARVIS-HUD", "JARVIS-Gateway", "JARVIS-Updater", "JARVIS-App") if t in out]
-        if not tasks:
+        tasks = [t for t in ALL_TASKS if t in out]
+        # Раньше самолечение срабатывало только при `if not tasks:` — то есть только когда
+        # НИ ОДНОЙ задачи не было вовсе. Если из 4 задач зарегистрировалась только часть
+        # (например, 1 из 4 — Gateway/HUD/App упали с "Access is denied" из-за старого бага
+        # Count=999, см. _RESTART_ON_FAILURE, а Updater без RestartOnFailure прошёл), doctor
+        # считал это успехом ("1 задач(и) в планировщике") и НЕ пытался чинить остальные —
+        # отсюда и не поднимающиеся сами Gateway/HUD даже после `jarvis doctor --fix`.
+        # Теперь сверяемся именно с полным набором.
+        missing = [t for t in ALL_TASKS if t not in tasks]
+        if missing:
             if fix:
-                # setup_scheduled_tasks.py требует явную подкоманду ("install") и обязательные
-                # --home/--python (см. argparse в самом скрипте) — раньше здесь вызывался без
-                # единого аргумента, из-за чего argparse сразу завершался с usage-ошибкой
-                # (exit 2), а `sh()` эту ошибку тихо проглатывал: "jarvis doctor --fix" молча
-                # ничего не чинил и продолжал показывать предупреждение на каждом запуске.
                 sh([sys.executable, str(JARVIS_HOME / "setup_scheduled_tasks.py"), "install",
                     "--home", str(HERMES_HOME), "--python", sys.executable], timeout=30)
                 code, out = sh(["schtasks", "/Query", "/FO", "LIST"], timeout=15)
-                tasks = [t for t in ("JARVIS-HUD", "JARVIS-Gateway", "JARVIS-Updater", "JARVIS-App") if t in out]
-                if tasks:
+                tasks = [t for t in ALL_TASKS if t in out]
+                missing = [t for t in ALL_TASKS if t not in tasks]
+                if not missing:
                     c.fixed = True
-                    return c.ok(f"{len(tasks)} задач(и) созданы (исправлено)")
+                    return c.ok(f"{len(tasks)} из {len(ALL_TASKS)} задач(и) созданы (исправлено)")
+                if tasks:
+                    return c.warn(
+                        f"зарегистрировано только {len(tasks)} из {len(ALL_TASKS)} "
+                        f"(не хватает: {', '.join(missing)}) — попытка автопочинки не устранила все задачи",
+                        "schtasks /Query /TN " + missing[0] + " /V /FO LIST   (причина отказа — "
+                        "часто устаревший XML или недостаточные права; переустановите install.ps1 -Yes)")
             return c.warn("задачи не установлены — JARVIS не поднимется сам после входа в систему",
                           "install.ps1 -Yes  (шаг Scheduled Task)  или запускайте jarvis up вручную")
-        return c.ok(f"{len(tasks)} задач(и) в планировщике")
+        return c.ok(f"{len(tasks)} из {len(ALL_TASKS)} задач(и) в планировщике")
     if IS_LINUX:
         c = Check("Автозапуск (systemd --user)")
         units = [u for u in ("jarvis-hud", "jarvis-gateway", "jarvis-updater") if
