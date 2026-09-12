@@ -78,6 +78,22 @@ def test_no_hardcoded_hermes_home_in_code():
     assert not offenders, "\n".join(offenders)
 
 
+def test_ps1_scripts_have_utf8_bom():
+    """Windows PowerShell 5.1 (не pwsh 7+) без BOM читает .ps1 в системной кодировке
+    (обычно cp1251), а не как UTF-8 — не-ASCII символы (стрелки, рамки, кириллица в
+    строках) искажаются и ломают парсер скрипта ("Отсутствует закрывающий знак '}'"
+    и подобные ошибки). Каждый закоммиченный .ps1-файл должен начинаться с BOM."""
+    bom = b"\xef\xbb\xbf"
+    offenders = []
+    for p in ROOT.glob("**/*.ps1"):
+        if ".git" in p.parts:
+            continue
+        head = p.read_bytes()[:3]
+        if head != bom:
+            offenders.append(str(p.relative_to(ROOT)))
+    assert not offenders, "Файлы без UTF-8 BOM (сломают PowerShell 5.1 на не-ASCII): " + ", ".join(offenders)
+
+
 # ── HUD ──────────────────────────────────────────────────────────────────
 
 def test_hud_rejects_huge_body(tmp_path, monkeypatch):
