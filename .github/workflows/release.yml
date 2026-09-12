@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: steps.t.outputs.exists != 'true'
         with: { python-version: "3.12" }
-      - run: pip install pytest pyyaml && python -m pytest tests -q
+      - run: pip install pytest pyyaml telethon && python -m pytest tests -q
         if: steps.t.outputs.exists != 'true'
       - uses: actions/download-artifact@v4
         if: steps.t.outputs.exists != 'true'
