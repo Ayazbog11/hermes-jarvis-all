@@ -98,6 +98,15 @@
 | https://my.telegram.org (API development tools) | Официальный источник `api_id`/`api_hash` для собственных приложений — аналог OAuth client id у Google Calendar, разовая пользовательская настройка, задокументирована в `docs/TELEGRAM.md` |
 | Telegram ToS / Terms of Service (общее прочтение, без единого канонического URL — telegram.org/tos) | Уточнение границы: запрет касается автоматизации, имитирующей человека для рассылки незапрошенных сообщений/накрутки чужих аккаунтов без их ведома — не касается владельца, добровольно дающего собственному инструменту доступ к своей же переписке (см. `docs/RESEARCH.md`, Раунд 8, для полного разбора) |
 
+## 10. Раунд 12 — действия с Telegram-сообщениями по образцу Kuni, профили провайдеров, фоновое прослушивание HUD
+
+| Источник | Что взято |
+|---|---|
+| https://github.com/alex2772/kuni (README, разделы reactions/edit/delete в истории коммитов, напр. `fix: emoji reactions rejected on U+FE0F, and caption editing for media messages`) | Полный набор действий с сообщениями поверх userbot-доступа (не только чтение/отправка): реакции, редактирование, удаление, пересылка, статус «печатает» перед ответом — портировано на Telethon как `react`/`edit_message`/`delete_message`/`forward_message`/`set_typing` в `telegram_userbot.py` |
+| https://docs.telethon.dev/ (`TelegramClient.iter_messages`, `.action()`, `.edit_message()`, `.delete_messages()`, `.forward_messages()`; `telethon.tl.functions.messages.SendReactionRequest`, `telethon.tl.types.ReactionEmoji`) | Точные сигнатуры Telethon-эквивалентов tdlib-вызовов Kuni (проверено интроспекцией `inspect.signature` в этом раунде) |
+| Собственный код: `scripts/model_switch.py` (Round 7, `ALLOWED_KEYS`), `plugins/jarvis-core/telegram_userbot.py` (Round 8, chmod 600 credentials-паттерн) | Профили провайдеров переиспользуют тот же паттерн ограниченного списка разрешённых ключей + файл с правами только владельцу, что уже был для модели/Telegram — не новая архитектура, применение существующего паттерна к новой задаче |
+| Web Speech API (`SpeechRecognition`, `continuous: true`) — стандартный браузерный API, уже использовался в HUD для push-to-talk (см. `startListen()`) | Фоновое прослушивание — то же API в режиме continuous с автоперезапуском и поиском имени ассистента в тексте, вместо разового распознавания по удержанию пробела |
+
 ## Что сознательно не взято и почему
 
 - **Полноценные векторные БД** (Qdrant, Milvus, Chroma, mem0/Cognee как внешний сервис): для личной базы в тысячи заметок/файлов чистый Python + BLOB в существующей `brain.db` не уступает по скорости и не требует лишнего процесса — ломало бы принцип «скачал и запустил». Лёгкая версия семантического поиска реализована локально в Раунде 5 (`plugins/jarvis-brain/embeddings.py`, опционально, требует только Ollama, которая уже была нужна проекту).

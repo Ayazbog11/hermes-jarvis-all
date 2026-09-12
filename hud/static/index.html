@@ -268,6 +268,7 @@
       <span class="tools">
         <button id="stopBtn" title="Замолчать (Esc)"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
         <button id="ttsBtn" title="Озвучивать ответы (T)"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button>
+        <button id="ambientBtn" title="Фоновое прослушивание — говорите без нажатия кнопки (W)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><circle cx="12" cy="21" r="1.2" fill="currentColor" stroke="none"/></svg></button>
         <button id="helpBtn" title="Клавиши (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg></button>
       </span>
       <button id="mainBtn" title="Говорить / отправить"><svg class="ic-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><svg class="ic-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
@@ -521,7 +522,8 @@
         <div class="kv" style="align-items:center;gap:6px">
           <span style="min-width:120px">${label}</span>
           <input class="mfield" data-field="${field}" placeholder="${esc((j.fields||{})[field]||'')}" value="${esc((j.values||{})[field]||'')}" style="flex:1;min-width:0">
-        </div>`).join('') + '<div class="ft" style="padding-top:8px"><button id="modelSaveBtn" style="width:100%">Сохранить изменённые</button></div>';
+        </div>`).join('') + '<div class="ft" style="padding-top:8px"><button id="modelSaveBtn" style="width:100%">Сохранить изменённые</button></div>'
+        + '<div id="modelProfiles" style="padding-top:10px;border-top:1px solid var(--line,rgba(255,255,255,.08));margin-top:8px"></div>';
       $('#modelSaveBtn').onclick = async () => {
         const inputs = [...b.querySelectorAll('.mfield')];
         let changed = 0, failed = 0;
@@ -536,10 +538,71 @@
         else if (!changed) toast('Нет изменений', 'bell', 'amber');
         loadModels();
       };
+      loadModelProfiles();
     } catch { b.innerHTML = '<div class="empty">HUD не смог прочитать настройки модели</div>'; }
   }
   loadModels();
   $('#modelRefresh').onclick = loadModels;
+
+  // ── Профили провайдеров — сохранённые наборы provider/model/ключ, переключение одной кнопкой ──
+  const PROFILE_FIELD_ORDER = ['model.provider', 'model.default', 'model.base_url',
+    'OPENROUTER_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'FIREWORKS_API_KEY'];
+  async function loadModelProfiles(){
+    const box = $('#modelProfiles');
+    if (!box) return;
+    box.innerHTML = '<div class="empty">Загрузка профилей…</div>';
+    try {
+      const j = await (await fetch('/api/model/profiles')).json();
+      if (!j.success) { box.innerHTML = `<div class="empty">${esc(j.error||'профили недоступны')}</div>`; return; }
+      const fields = j.fields || {};
+      const names = Object.keys(j.profiles || {});
+      const list = names.length ? names.map(name => {
+        const p = j.profiles[name];
+        const summary = Object.entries(p).slice(0, 2).map(([k, v]) => `${k}=${esc(v)}`).join(', ');
+        return `<div class="kv" style="align-items:center;gap:6px">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(summary)}"><b>${esc(name)}</b> — ${esc(summary)}</span>
+          <button class="profileApply" data-name="${esc(name)}" title="Применить">▶</button>
+          <button class="profileDelete" data-name="${esc(name)}" title="Удалить">✕</button>
+        </div>`;
+      }).join('') : '<div class="empty">Нет сохранённых профилей провайдеров</div>';
+      box.innerHTML = '<div style="font-size:12px;opacity:.7;padding-bottom:6px">Профили провайдеров (переключение одной кнопкой)</div>'
+        + list
+        + `<div class="ft" style="padding-top:8px;display:flex;gap:6px">
+             <input id="profileNewName" placeholder="имя нового профиля (напр. openrouter)" style="flex:1;min-width:0">
+             <button id="profileSaveCurrent">Сохранить текущее как профиль</button>
+           </div>`;
+      box.querySelectorAll('.profileApply').forEach(btn => btn.onclick = async () => {
+        const r = await post('/api/model/profiles/apply', {name: btn.dataset.name});
+        if (r.success) toast(`Профиль «${btn.dataset.name}» применён`, 'bolt', 'green');
+        else toast(`Не удалось применить профиль: ${r.error||'ошибка'}`, 'bell', 'amber', 15);
+        loadModels();
+      });
+      box.querySelectorAll('.profileDelete').forEach(btn => btn.onclick = async () => {
+        await post('/api/model/profiles/delete', {name: btn.dataset.name});
+        loadModelProfiles();
+      });
+      $('#profileSaveCurrent').onclick = async () => {
+        const name = ($('#profileNewName').value || '').trim();
+        if (!name) { toast('Введите имя профиля', 'bell', 'amber'); return; }
+        // Сохраняем то, что сейчас реально выставлено в Hermes (chat_model/base_url и т.п. из основной панели) —
+        // ключи API нужно ввести отдельно один раз (полей для них нет в основной панели по соображениям приватности:
+        // /api/model их не читает, только hermes config get значений НЕ-секретных ключей).
+        const modelJ = await (await fetch('/api/model')).json();
+        const chatModel = (modelJ.values || {}).chat_model || '';
+        const apiKeyField = prompt('Необязательно: вставьте API-ключ для этого профиля (или оставьте пустым, если провайдер локальный/без ключа)');
+        const fields = {'model.default': chatModel};
+        if (apiKeyField && apiKeyField.trim()) {
+          const keyName = prompt('Какая переменная окружения это ключ? Например: OPENROUTER_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY, FIREWORKS_API_KEY', 'OPENROUTER_API_KEY');
+          if (keyName && PROFILE_FIELD_ORDER.includes(keyName.trim())) fields[keyName.trim()] = apiKeyField.trim();
+        }
+        const r = await post('/api/model/profiles', {name, fields});
+        if (r.success) toast(`Профиль «${name}» сохранён`, 'bolt', 'green');
+        else toast(r.error || 'Не удалось сохранить профиль', 'bell', 'amber', 15);
+        $('#profileNewName').value = '';
+        loadModelProfiles();
+      };
+    } catch { box.innerHTML = '<div class="empty">Не удалось загрузить профили</div>'; }
+  }
 
   // ── «Telegram» — статус личного аккаунта (MTProto/Telethon, см. plugins/jarvis-core/telegram_userbot.py) ──
   async function loadTelegram(){
@@ -706,6 +769,67 @@
   function toggleListen(){ state==='listening' ? stopListen() : startListen(); }
   orb.onclick = toggleListen;
 
+  // ── Фоновое прослушивание («Hey Jarvis» прямо в браузере, без зажатия пробела) ──
+  // Идея как у wake_word Hermes (openWakeWord, см. docs/ARCHITECTURE.md), но без установки
+  // моделей ONNX — используем непрерывное браузерное распознавание речи (Web Speech API) и
+  // сами ищем имя ассистента в потоке слов. Хуже офлайн-детектора по качеству (облачное
+  // распознавание Chrome/Edge, работает только пока открыта вкладка HUD), но не требует
+  // ничего устанавливать и явно включается/выключается одной кнопкой — как и просил пользователь.
+  const WAKE_WORDS = ['джарвис', 'jarvis', 'дживс'];
+  let ambientOn = localStorage.getItem('jarvis.ambient') === '1';
+  let ambientRec = null, ambientWantOn = false, ambientRestartTimer = null;
+  function _stripWakeWord(text){
+    const low = text.toLowerCase();
+    for (const w of WAKE_WORDS) {
+      const i = low.indexOf(w);
+      if (i >= 0) return text.slice(i + w.length).replace(/^[,.\s!—-]+/, '').trim();
+    }
+    return null;
+  }
+  function ambientSetButton(){
+    $('#ambientBtn').classList.toggle('active', ambientOn);
+    $('#ambientBtn').title = ambientOn ? 'Фоновое прослушивание включено — скажите «Джарвис, …» (W)' : 'Фоновое прослушивание — говорите без нажатия кнопки (W)';
+  }
+  function ambientStart(){
+    if (!SR) { toast('Распознавание речи недоступно в этом браузере. Откройте HUD в Safari или Chrome.', 'bell', 'amber'); ambientOn = false; localStorage.setItem('jarvis.ambient','0'); ambientSetButton(); return; }
+    ambientWantOn = true;
+    ambientRec = new SR(); ambientRec.lang = 'ru-RU'; ambientRec.interimResults = false; ambientRec.continuous = true;
+    ambientRec.onresult = e => {
+      if (chatting || state==='listening') return;                 // не мешаем активному диалогу/push-to-talk
+      const text = e.results[e.results.length - 1][0].transcript || '';
+      const after = _stripWakeWord(text);
+      if (after === null) return;                                  // имя не услышано в этой фразе — игнорируем
+      if (after) send(after);                                       // «Джарвис, включи свет» — сразу целиком
+      else startListen();                                          // просто «Джарвис» — слушаем продолжение как push-to-talk
+    };
+    ambientRec.onerror = e => { if (e.error === 'not-allowed') { ambientWantOn = false; ambientOn = false; localStorage.setItem('jarvis.ambient','0'); ambientSetButton(); toast('Браузер запретил микрофон — фоновое прослушивание выключено.', 'bell', 'amber'); } };
+    // continuous-распознавание само останавливается после паузы в большинстве браузеров — перезапускаем,
+    // пока пользователь явно не выключил кнопку (auto-restart, как делает wake_word Hermes постоянно).
+    ambientRec.onend = () => { if (ambientWantOn) ambientRestartTimer = setTimeout(() => { try { ambientRec.start(); } catch {} }, 250); };
+    try { ambientRec.start(); } catch {}
+  }
+  function ambientStop(){
+    ambientWantOn = false;
+    if (ambientRestartTimer) { clearTimeout(ambientRestartTimer); ambientRestartTimer = null; }
+    if (ambientRec) { try { ambientRec.stop(); } catch {} }
+  }
+  async function toggleAmbient(){
+    ambientOn = !ambientOn;
+    localStorage.setItem('jarvis.ambient', ambientOn ? '1' : '0');
+    ambientSetButton();
+    if (ambientOn) {
+      const okMic = await attachMic();
+      if (!okMic) { toast('Нет доступа к микрофону. Разрешите его для этого сайта.', 'bell', 'amber'); ambientOn = false; localStorage.setItem('jarvis.ambient','0'); ambientSetButton(); return; }
+      ambientStart();
+      toast('Фоновое прослушивание включено — скажите «Джарвис, …»', 'bolt', 'green');
+    } else { ambientStop(); toast('Фоновое прослушивание выключено', 'bell', 'amber'); }
+  }
+  $('#ambientBtn').onclick = toggleAmbient;
+  ambientSetButton();
+  // Автовключение при загрузке страницы НЕ делаем даже если раньше было включено — большинство
+  // браузеров всё равно требуют новый жест пользователя для доступа к микрофону после перезагрузки
+  // вкладки; кнопка просто покажет последнее состояние (active), а реальный запуск — по клику/W.
+
   let ttsOn = localStorage.getItem('jarvis.tts')==='1'; $('#ttsBtn').classList.toggle('active', ttsOn);
   $('#ttsBtn').onclick = () => { ttsOn = !ttsOn; localStorage.setItem('jarvis.tts', ttsOn?'1':'0'); $('#ttsBtn').classList.toggle('active', ttsOn); if (!ttsOn) stopAudio(); };
   let lastSpoken = '';
@@ -735,7 +859,7 @@
 
   // ───────────────────────── клавиши ─────────────────────────
   function showHelp(){
-    card('help', {title:'Клавиши', html: `<div class="kv"><span>Пробел (удерживать) / клик по сфере</span><b>говорить</b></div><div class="kv"><span>Enter</span><b>отправить</b></div><div class="kv"><span>K</span><b>база знаний</b></div><div class="kv"><span>A</span><b>лента активности</b></div><div class="kv"><span>T</span><b>озвучивать ответы</b></div><div class="kv"><span>H</span><b>скрыть/показать панели</b></div><div class="kv"><span>Esc</span><b>замолчать / очистить</b></div><div class="kv"><span>/</span><b>в строку ввода</b></div>`});
+    card('help', {title:'Клавиши', html: `<div class="kv"><span>Пробел (удерживать) / клик по сфере</span><b>говорить</b></div><div class="kv"><span>Enter</span><b>отправить</b></div><div class="kv"><span>K</span><b>база знаний</b></div><div class="kv"><span>A</span><b>лента активности</b></div><div class="kv"><span>T</span><b>озвучивать ответы</b></div><div class="kv"><span>W</span><b>фоновое прослушивание вкл/выкл («Джарвис, …»)</b></div><div class="kv"><span>H</span><b>скрыть/показать панели</b></div><div class="kv"><span>Esc</span><b>замолчать / очистить</b></div><div class="kv"><span>/</span><b>в строку ввода</b></div>`});
   }
   $('#helpBtn').onclick = showHelp;
   addEventListener('keydown', e => {
@@ -747,6 +871,7 @@
     else if (k==='k' || k==='л') cards.has('brain') ? closeCard('brain') : showBrain('');
     else if (k==='a' || k==='ф') toggleActivity();
     else if (k==='t' || k==='е') $('#ttsBtn').click();
+    else if (k==='w' || k==='ц') toggleAmbient();
     else if (k==='h' || k==='р') document.body.classList.toggle('zen');
     else if (k==='?' || k===',') cards.has('help') ? closeCard('help') : showHelp();
     else if (k==='/' || k==='.') { e.preventDefault(); input.focus(); }

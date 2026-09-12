@@ -50,6 +50,11 @@ Telegram Desktop, когда открыт на компьютере. Поэто�
   send_file(chat, path, caption=None, voice_note=False) -> dict
   download_media(chat, message_id, out_dir=None) -> dict
   mark_read(chat) -> dict
+  react(chat, message_id, emoji) -> dict            (реакция эмодзи на сообщение, как в kuni)
+  edit_message(chat, message_id, text) -> dict       (редактировать СВОЁ ранее отправленное сообщение)
+  delete_message(chat, message_id, revoke=True) -> dict  (удалить сообщение; revoke=True — у всех)
+  forward_message(chat, from_chat, message_id) -> dict   (переслать сообщение в другой чат)
+  set_typing(chat, seconds=4) -> dict                (показать статус «печатает…» — эстетика, как у kuni)
 """
 
 from __future__ import annotations
@@ -57,6 +62,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import time
 from pathlib import Path
 
 try:
@@ -69,11 +75,14 @@ try:
         FloodWaitError,
         RPCError,
     )
+    from telethon.tl.functions.messages import SendReactionRequest
+    from telethon.tl.types import ReactionEmoji
     _TELETHON_OK = True
 except ImportError:  # telethon не установлен — модуль тихо отключается (как gcalendar без сети)
     TelegramClient = None  # type: ignore
     SessionPasswordNeededError = PhoneCodeInvalidError = PhoneCodeExpiredError = Exception  # type: ignore
     PhoneNumberInvalidError = FloodWaitError = RPCError = Exception  # type: ignore
+    SendReactionRequest = ReactionEmoji = None  # type: ignore
     _TELETHON_OK = False
 
 
@@ -483,3 +492,93 @@ def download_media(chat, message_id: int, out_dir: str | None = None) -> dict:
         return {"success": False, "error": str(e)}
     except (ValueError, RPCError) as e:
         return {"success": False, "error": f"Не удалось скачать: {e}"}
+
+
+def react(chat, message_id: int, emoji: str) -> dict:
+    """Поставить эмодзи-реакцию на сообщение — то же, что делает Kuni через addMessageReaction в
+
+    tdlib (см. docs/RESEARCH.md, Round 8 доразбор). emoji — один символ вроде '👍'/'❤'/'🔥';
+    пустая строка снимает ранее поставленную реакцию (Telegram API: reaction=[] значит «убрать»).
+    """
+    emoji = (emoji or "").strip()
+    try:
+        with _Client() as client:
+            entity = _resolve_chat(client, chat)
+            peer = client.get_input_entity(entity)
+            reaction = [ReactionEmoji(emoticon=emoji)] if emoji else []
+            client(SendReactionRequest(peer=peer, msg_id=int(message_id), reaction=reaction))
+            return {"success": True, "reacted": emoji or None}
+    except TelegramError as e:
+        return {"success": False, "error": str(e)}
+    except (ValueError, RPCError) as e:
+        # Telegram отклоняет реакции, недоступные в конкретном чате (REACTION_INVALID) —
+        # частая, ожидаемая ошибка (не баг), см. kuni's fix для U+FE0F variation selector:
+        # сообщаем причину модели, а не падаем с трейсбеком.
+        return {"success": False, "error": f"Реакция не принята Telegram (возможно, недоступна в этом чате): {e}"}
+
+
+def edit_message(chat, message_id: int, text: str) -> dict:
+    """Отредактировать СВОЁ ранее отправленное текстовое сообщение (Telegram не даёт редактировать
+
+    чужие сообщения — это ограничение самого протокола, не JARVIS)."""
+    text = (text or "").strip()
+    if not text:
+        return {"success": False, "error": "Пустой текст сообщения"}
+    try:
+        with _Client() as client:
+            entity = _resolve_chat(client, chat)
+            client.edit_message(entity, int(message_id), text)
+            return {"success": True}
+    except TelegramError as e:
+        return {"success": False, "error": str(e)}
+    except (ValueError, RPCError) as e:
+        return {"success": False, "error": f"Не удалось отредактировать (сообщение чужое/устарело/удалено?): {e}"}
+
+
+def delete_message(chat, message_id: int, revoke: bool = True) -> dict:
+    """Удалить сообщение. revoke=True (по умолчанию) — удалить у всех участников чата, как в
+
+    обычном клиенте Telegram («Удалить для всех»); revoke=False — только из своей истории."""
+    try:
+        with _Client() as client:
+            entity = _resolve_chat(client, chat)
+            client.delete_messages(entity, int(message_id), revoke=revoke)
+            return {"success": True, "revoked": revoke}
+    except TelegramError as e:
+        return {"success": False, "error": str(e)}
+    except (ValueError, RPCError) as e:
+        return {"success": False, "error": f"Не удалось удалить: {e}"}
+
+
+def forward_message(chat, from_chat, message_id: int) -> dict:
+    """Переслать сообщение из одного чата (from_chat) в другой (chat) — как кнопка «Переслать»."""
+    try:
+        with _Client() as client:
+            dst = _resolve_chat(client, chat)
+            src = _resolve_chat(client, from_chat)
+            msgs = client.forward_messages(dst, int(message_id), src)
+            msg = msgs[0] if isinstance(msgs, list) else msgs
+            return {"success": True, "message_id": getattr(msg, "id", None)}
+    except TelegramError as e:
+        return {"success": False, "error": str(e)}
+    except (ValueError, RPCError) as e:
+        return {"success": False, "error": f"Не удалось переслать: {e}"}
+
+
+def set_typing(chat, seconds: float = 4.0) -> dict:
+    """Показать в чате статус «печатает…» на N секунд — чисто эстетическая деталь (как у kuni
+
+    перед send_telegram_message), делает ответ визуально «живее» для собеседника. Не влияет на
+    логику самого JARVIS — можно не звать вовсе, ошибка здесь никогда не должна быть блокирующей.
+    """
+    try:
+        with _Client() as client:
+            entity = _resolve_chat(client, chat)
+            secs = max(0.5, min(float(seconds), 30.0))  # разумные границы — не «зависнуть» надолго
+            with client.action(entity, "typing", auto_cancel=True):
+                time.sleep(secs)
+            return {"success": True}
+    except TelegramError as e:
+        return {"success": False, "error": str(e)}
+    except (ValueError, RPCError) as e:
+        return {"success": False, "error": f"Не удалось показать «печатает»: {e}"}

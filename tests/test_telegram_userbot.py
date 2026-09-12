@@ -177,6 +177,36 @@ class _FakeClient:
     def download_media(self, msg, file=None):
         return (file or "") + "downloaded.bin"
 
+    def get_input_entity(self, entity):
+        return entity
+
+    def __call__(self, request):
+        _FakeClient.calls.append(("request", request))
+        if getattr(request, "reaction", None) and getattr(request.reaction[0], "emoticon", "") == "🚫invalid":
+            raise ValueError("REACTION_INVALID")
+        return True
+
+    def edit_message(self, entity, message_id, text):
+        if message_id == 999999:
+            raise ValueError("MESSAGE_AUTHOR_REQUIRED")
+        return _FakeMessage(message_id, text=text, out=True)
+
+    def delete_messages(self, entity, message_ids, revoke=True):
+        return [True]
+
+    def forward_messages(self, entity, messages, from_peer):
+        return [_FakeMessage(997, out=True)]
+
+    def action(self, entity, act, auto_cancel=True):
+        class _Ctx:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        return _Ctx()
+
     def __enter__(self):
         return self
 
@@ -263,6 +293,65 @@ def test_download_media_no_message_found(authorized):
     assert result["success"] is False
 
 
+# ────────────────────── новые операции по образцу kuni (Round 12) ──────────
+
+def test_react_adds_reaction(authorized):
+    result = authorized.react(2, 101, "👍")
+    assert result["success"] is True
+    assert result["reacted"] == "👍"
+
+
+def test_react_empty_emoji_clears_reaction(authorized):
+    result = authorized.react(2, 101, "")
+    assert result["success"] is True
+    assert result["reacted"] is None
+
+
+def test_react_invalid_reaction_reports_error_not_crash(authorized):
+    result = authorized.react(2, 101, "🚫invalid")
+    assert result["success"] is False
+    assert "Telegram" in result["error"]
+
+
+def test_edit_message_success(authorized):
+    result = authorized.edit_message(2, 999, "исправленный текст")
+    assert result["success"] is True
+
+
+def test_edit_message_empty_text_fails(authorized):
+    result = authorized.edit_message(2, 999, "   ")
+    assert result["success"] is False
+
+
+def test_edit_message_not_own_reports_error(authorized):
+    result = authorized.edit_message(2, 999999, "текст")
+    assert result["success"] is False
+
+
+def test_delete_message_default_revokes(authorized):
+    result = authorized.delete_message(2, 101)
+    assert result["success"] is True
+    assert result["revoked"] is True
+
+
+def test_delete_message_no_revoke(authorized):
+    result = authorized.delete_message(2, 101, revoke=False)
+    assert result["success"] is True
+    assert result["revoked"] is False
+
+
+def test_forward_message_success(authorized):
+    result = authorized.forward_message(2, 1, 101)
+    assert result["success"] is True
+    assert result["message_id"] == 997
+
+
+def test_set_typing_success(authorized, monkeypatch):
+    monkeypatch.setattr(authorized.time, "sleep", lambda s: None)  # не ждать реально в тесте
+    result = authorized.set_typing(2, seconds=1)
+    assert result["success"] is True
+
+
 # ────────────────────────── tool_jarvis_telegram (обработчик) ──────────────
 
 def test_tool_jarvis_telegram_status_not_configured(ctx):
@@ -293,3 +382,54 @@ def test_tool_jarvis_telegram_unknown_action(ctx, authorized):
     core.register(ctx)
     out = json.loads(core.tool_jarvis_telegram({"action": "bogus"}))
     assert out["success"] is False
+
+
+def test_tool_jarvis_telegram_react(ctx, authorized):
+    core = load_plugin("jarvis-core")
+    core.register(ctx)
+    out = json.loads(core.tool_jarvis_telegram({"action": "react", "chat": 2, "message_id": 101, "emoji": "🔥"}))
+    assert out["success"] is True
+
+
+def test_tool_jarvis_telegram_react_requires_message_id(ctx, authorized):
+    core = load_plugin("jarvis-core")
+    core.register(ctx)
+    out = json.loads(core.tool_jarvis_telegram({"action": "react", "chat": 2, "emoji": "🔥"}))
+    assert out["success"] is False
+
+
+def test_tool_jarvis_telegram_edit_message(ctx, authorized):
+    core = load_plugin("jarvis-core")
+    core.register(ctx)
+    out = json.loads(core.tool_jarvis_telegram({"action": "edit_message", "chat": 2, "message_id": 999, "text": "новый текст"}))
+    assert out["success"] is True
+
+
+def test_tool_jarvis_telegram_delete_message_default_revoke(ctx, authorized, monkeypatch):
+    core = load_plugin("jarvis-core")
+    core.register(ctx)
+    out = json.loads(core.tool_jarvis_telegram({"action": "delete_message", "chat": 2, "message_id": 101}))
+    assert out["success"] is True
+    assert out["revoked"] is True
+
+
+def test_tool_jarvis_telegram_forward_message(ctx, authorized):
+    core = load_plugin("jarvis-core")
+    core.register(ctx)
+    out = json.loads(core.tool_jarvis_telegram({"action": "forward_message", "chat": 2, "from_chat": 1, "message_id": 101}))
+    assert out["success"] is True
+
+
+def test_tool_jarvis_telegram_forward_message_requires_from_chat(ctx, authorized):
+    core = load_plugin("jarvis-core")
+    core.register(ctx)
+    out = json.loads(core.tool_jarvis_telegram({"action": "forward_message", "chat": 2, "message_id": 101}))
+    assert out["success"] is False
+
+
+def test_tool_jarvis_telegram_set_typing(ctx, authorized, monkeypatch):
+    monkeypatch.setattr(authorized.time, "sleep", lambda s: None)
+    core = load_plugin("jarvis-core")
+    core.register(ctx)
+    out = json.loads(core.tool_jarvis_telegram({"action": "set_typing", "chat": 2}))
+    assert out["success"] is True

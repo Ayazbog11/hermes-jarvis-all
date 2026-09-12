@@ -397,6 +397,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_targets(parse_qs(u.query).get("platform", [""])[0])
         if u.path == "/api/model":
             return self._model_get()
+        if u.path == "/api/model/profiles":
+            return self._model_profiles_get()
         if u.path == "/api/telegram/status":
             return self._telegram_status()
         if u.path == "/file":
@@ -456,6 +458,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_voice(self._read_json())
         if u.path == "/api/model":
             return self._model_set(self._read_json())
+        if u.path == "/api/model/profiles":
+            return self._model_profiles_save(self._read_json())
+        if u.path == "/api/model/profiles/apply":
+            return self._model_profiles_apply(self._read_json())
+        if u.path == "/api/model/profiles/delete":
+            return self._model_profiles_delete(self._read_json())
         return self._json(404, {"error": "not found"})
 
     def _tts(self, body: dict) -> None:
@@ -653,6 +661,40 @@ class Handler(BaseHTTPRequestHandler):
         result = model_switch.set_value(field, value)
         BUS.publish({"event": "model.set", "data": {"field": field, "success": result.get("success", False)}})
         return self._json(200, result)
+
+    def _model_profiles_get(self) -> None:
+        """GET /api/model/profiles — сохранённые профили провайдеров (ключи API замаскированы)."""
+        if model_switch is None:
+            return self._json(200, {"success": False, "error": "model_switch.py недоступен"})
+        return self._json(200, model_switch.list_profiles())
+
+    def _model_profiles_save(self, body: dict) -> None:
+        """POST /api/model/profiles {name, fields:{...}} — сохранить набор provider/model/ключей
+
+        под именем, чтобы потом переключаться одной кнопкой (Round 12 — "быстро менять между
+        несколькими API-ключами провайдеров прямо в HUD", см. docs/AI-MODELS.md)."""
+        if model_switch is None:
+            return self._json(200, {"success": False, "error": "model_switch.py недоступен"})
+        name = str(body.get("name") or "").strip()
+        fields = body.get("fields") if isinstance(body.get("fields"), dict) else {}
+        return self._json(200, model_switch.save_profile(name, fields))
+
+    def _model_profiles_apply(self, body: dict) -> None:
+        """POST /api/model/profiles/apply {name} — применить сохранённый профиль (`hermes config set`
+
+        для каждого его поля)."""
+        if model_switch is None:
+            return self._json(200, {"success": False, "error": "model_switch.py недоступен"})
+        name = str(body.get("name") or "").strip()
+        result = model_switch.apply_profile(name)
+        BUS.publish({"event": "model.profile_apply", "data": {"name": name, "success": result.get("success", False)}})
+        return self._json(200, result)
+
+    def _model_profiles_delete(self, body: dict) -> None:
+        if model_switch is None:
+            return self._json(200, {"success": False, "error": "model_switch.py недоступен"})
+        name = str(body.get("name") or "").strip()
+        return self._json(200, model_switch.delete_profile(name))
 
     def do_OPTIONS(self):
         # CORS-preflight сознательно не разрешаем: HUD — same-origin приложение

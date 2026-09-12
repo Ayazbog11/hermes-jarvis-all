@@ -315,6 +315,44 @@ def test_model_set_endpoint(hud_server, monkeypatch):
     assert calls == [("chat_model", "openai/gpt-4o")]
 
 
+def test_model_profiles_get_endpoint(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.model_switch, "list_profiles",
+                        lambda: {"success": True, "profiles": {"openrouter": {"model.provider": "openrouter"}}, "fields": {}})
+    st, body = _get(hud_server + "/api/model/profiles")
+    data = json.loads(body)
+    assert st == 200 and data["success"] is True and "openrouter" in data["profiles"]
+
+
+def test_model_profiles_save_endpoint(hud_server, monkeypatch):
+    calls = []
+    monkeypatch.setattr(hud.model_switch, "save_profile",
+                        lambda name, fields: calls.append((name, fields)) or {"success": True, "name": name})
+    req = urllib.request.Request(hud_server + "/api/model/profiles",
+                                 data=json.dumps({"name": "local-ollama", "fields": {"model.provider": "custom"}}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    assert json.loads(body)["success"] is True
+    assert calls == [("local-ollama", {"model.provider": "custom"})]
+
+
+def test_model_profiles_apply_endpoint(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.model_switch, "apply_profile", lambda name: {"success": True, "name": name, "results": {}})
+    req = urllib.request.Request(hud_server + "/api/model/profiles/apply",
+                                 data=json.dumps({"name": "local-ollama"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    assert json.loads(body)["success"] is True
+
+
+def test_model_profiles_delete_endpoint(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.model_switch, "delete_profile", lambda name: {"success": True})
+    req = urllib.request.Request(hud_server + "/api/model/profiles/delete",
+                                 data=json.dumps({"name": "local-ollama"}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    assert json.loads(body)["success"] is True
+
+
 def test_telegram_status_endpoint_not_configured(hud_server, monkeypatch):
     monkeypatch.setattr(hud.telegram_userbot, "status", lambda: {"available": True, "configured": False, "authorized": False})
     st, body = _get(hud_server + "/api/telegram/status")

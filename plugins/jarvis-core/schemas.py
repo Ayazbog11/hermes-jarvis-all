@@ -197,7 +197,12 @@ JARVIS_TELEGRAM = {
         "по умолчанию false — только посмотреть, не трогая счётчик); mark_read — отметить чат "
         "прочитанным без чтения; send — отправить текст; send_file — отправить файл/фото/голосовое "
         "(voice_note=true — как голосовое сообщение); download_media — скачать медиа конкретного "
-        "сообщения на диск (message_id из read). Если authorized=false, объясни пользователю, что "
+        "сообщения на диск (message_id из read); react — поставить эмодзи-реакцию на сообщение "
+        "(emoji='' снимает реакцию); edit_message — отредактировать СВОЁ ранее отправленное текстовое "
+        "сообщение (чужие Telegram редактировать не даёт); delete_message — удалить сообщение "
+        "(revoke=true по умолчанию — удаляет у всех участников чата); forward_message — переслать "
+        "сообщение из from_chat в chat; set_typing — показать статус «печатает…» перед ответом "
+        "(чисто косметика, не обязательна). Если authorized=false, объясни пользователю, что "
         "нужно один раз выполнить `jarvis telegram setup` в терминале — сам инструмент вход не запускает."
     ),
     "parameters": {
@@ -205,21 +210,27 @@ JARVIS_TELEGRAM = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["status", "dialogs", "unread", "read", "mark_read", "send", "send_file", "download_media"],
+                "enum": ["status", "dialogs", "unread", "read", "mark_read", "send", "send_file", "download_media",
+                         "react", "edit_message", "delete_message", "forward_message", "set_typing"],
             },
             "chat": {
                 "type": "string",
                 "description": "Чат: 'me' (Избранное), @username, номер телефона контакта или числовой id "
-                               "(из dialogs/unread) — для read/mark_read/send/send_file/download_media.",
+                               "(из dialogs/unread) — для read/mark_read/send/send_file/download_media/react/"
+                               "edit_message/delete_message/forward_message(куда)/set_typing.",
             },
             "limit": {"type": "integer", "description": "Сколько элементов вернуть (для dialogs/read), по умолчанию 20"},
             "unread_only": {"type": "boolean", "description": "Для dialogs — только чаты с непрочитанными; для read — только непрочитанные сообщения этого чата"},
             "mark_read": {"type": "boolean", "description": "Для read — также отметить чат прочитанным (по умолчанию false)"},
-            "text": {"type": "string", "description": "Текст сообщения (для action=send)"},
+            "text": {"type": "string", "description": "Текст сообщения (для action=send/edit_message)"},
             "path": {"type": "string", "description": "Локальный путь к файлу/фото/голосовому (для action=send_file)"},
             "caption": {"type": "string", "description": "Подпись к файлу (для action=send_file)"},
             "voice_note": {"type": "boolean", "description": "Отправить файл как голосовое сообщение (для action=send_file)"},
-            "message_id": {"type": "integer", "description": "ID сообщения, чьё медиа скачать (для action=download_media, из read)"},
+            "message_id": {"type": "integer", "description": "ID сообщения (из read/dialogs) — для download_media/react/edit_message/delete_message/forward_message"},
+            "emoji": {"type": "string", "description": "Эмодзи реакции, напр. '👍'/'❤'/'🔥' (для action=react; пусто — снять реакцию)"},
+            "revoke": {"type": "boolean", "description": "Для delete_message — удалить у всех участников (true, по умолчанию) или только у себя (false)"},
+            "from_chat": {"type": "string", "description": "Исходный чат, откуда пересылается сообщение (для action=forward_message)"},
+            "seconds": {"type": "number", "description": "Сколько секунд показывать статус «печатает…» (для action=set_typing, по умолчанию 4, максимум 30)"},
         },
         "required": ["action"],
     },

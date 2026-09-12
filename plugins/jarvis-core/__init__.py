@@ -513,6 +513,37 @@ def tool_jarvis_telegram(args: dict, **kwargs) -> str:
         if not chat or not message_id:
             return json.dumps({"success": False, "error": "Нужны chat и message_id (из read)"}, ensure_ascii=False)
         return json.dumps(tu.download_media(chat, int(message_id)), ensure_ascii=False)
+    if action == "react":
+        chat = args.get("chat", "")
+        message_id = args.get("message_id")
+        if not chat or not message_id:
+            return json.dumps({"success": False, "error": "Нужны chat и message_id (из read/dialogs)"}, ensure_ascii=False)
+        return json.dumps(tu.react(chat, int(message_id), args.get("emoji", "")), ensure_ascii=False)
+    if action == "edit_message":
+        chat = args.get("chat", "")
+        message_id = args.get("message_id")
+        if not chat or not message_id:
+            return json.dumps({"success": False, "error": "Нужны chat и message_id (СВОЁ сообщение)"}, ensure_ascii=False)
+        return json.dumps(tu.edit_message(chat, int(message_id), args.get("text", "")), ensure_ascii=False)
+    if action == "delete_message":
+        chat = args.get("chat", "")
+        message_id = args.get("message_id")
+        if not chat or not message_id:
+            return json.dumps({"success": False, "error": "Нужны chat и message_id"}, ensure_ascii=False)
+        revoke = args.get("revoke")
+        return json.dumps(tu.delete_message(chat, int(message_id), revoke=True if revoke is None else bool(revoke)), ensure_ascii=False)
+    if action == "forward_message":
+        chat = args.get("chat", "")
+        from_chat = args.get("from_chat", "")
+        message_id = args.get("message_id")
+        if not chat or not from_chat or not message_id:
+            return json.dumps({"success": False, "error": "Нужны chat, from_chat и message_id"}, ensure_ascii=False)
+        return json.dumps(tu.forward_message(chat, from_chat, int(message_id)), ensure_ascii=False)
+    if action == "set_typing":
+        chat = args.get("chat", "")
+        if not chat:
+            return json.dumps({"success": False, "error": "Нужен chat"}, ensure_ascii=False)
+        return json.dumps(tu.set_typing(chat, float(args.get("seconds") or 4.0)), ensure_ascii=False)
     return json.dumps({"success": False, "error": f"Неизвестное действие: {action}"}, ensure_ascii=False)
 
 

@@ -18,12 +18,26 @@ Hermes уже поддерживает независимый выбор мод�
   - auxiliary.title_generation.model — модель, которая придумывает заголовки сессий
   - image_gen.provider / image_gen.model — генерация картинок (jarvis_image, hud "photo")
   - tts.provider                 — озвучка (jarvis_voice_note, HUD "голосовое")
+
+Профили провайдеров (Round 12): у Hermes уже можно настроить сразу несколько провайдеров
+(OpenRouter/Anthropic/OpenAI/Gemini/xAI/Ollama и т.д., см. docs/AI-MODELS.md) и переключаться
+между ними через `hermes model`/`/model` — но каждый раз вспоминать «какой ключ переменной
+окружения у какого провайдера» и вбивать 3-4 значения вручную неудобно. `save_profile()`/
+`apply_profile()` просто запоминают такой набор значений (provider/base_url/default model +
+опционально сам API-ключ — `hermes config set OPENROUTER_API_KEY ...` и т.п. уже сам решает,
+что это секрет, и кладёт в `.env`, а не в `config.yaml`) под именем и применяют его одной
+кнопкой в HUD — быстрое «переключиться на OpenRouter» / «переключиться на локальный Ollama»
+без похода в `hermes model` за 4 отдельных значения каждый раз.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
+import stat
 import subprocess
+from pathlib import Path
 
 # label -> (config-ключ, подсказка/плейсхолдер для UI)
 ALLOWED_KEYS: dict[str, tuple[str, str]] = {
@@ -35,6 +49,122 @@ ALLOWED_KEYS: dict[str, tuple[str, str]] = {
     "image_model": ("image_gen.model", "модель генерации картинок (зависит от провайдера)"),
     "tts_provider": ("tts.provider", "провайдер озвучки (edge-tts и др. — см. docs)"),
 }
+
+# ── Профили провайдеров: набор ключей config.yaml/.env, которые можно сохранить под именем
+# и применить одной кнопкой. Ключи API — те же имена переменных окружения, что и в
+# config/.env.example и docs/AI-MODELS.md (полный список провайдеров — Hermes docs "AI Providers").
+PROFILE_ALLOWED_KEYS: dict[str, str] = {
+    "model.provider": "Провайдер модели чата (nous | openrouter | anthropic | openai-api | gemini | custom …)",
+    "model.default": "Модель чата (напр. anthropic/claude-3.7-sonnet, openrouter/auto, qwen3:8b)",
+    "model.base_url": "Свой OpenAI-совместимый endpoint (для custom/Ollama и т.п.)",
+    "OPENROUTER_API_KEY": "Ключ OpenRouter",
+    "ANTHROPIC_API_KEY": "Ключ Anthropic",
+    "OPENAI_API_KEY": "Ключ OpenAI",
+    "GEMINI_API_KEY": "Ключ Google Gemini",
+    "XAI_API_KEY": "Ключ xAI (Grok)",
+    "GROQ_API_KEY": "Ключ Groq",
+    "DEEPSEEK_API_KEY": "Ключ DeepSeek",
+    "FIREWORKS_API_KEY": "Ключ Fireworks AI",
+}
+_SECRET_KEYS = {k for k in PROFILE_ALLOWED_KEYS if k.isupper()}  # переменные окружения — секреты, не показываем в списке
+
+
+def _hermes_home() -> Path:
+    default = (os.environ.get("LOCALAPPDATA", "") + "/hermes") if os.name == "nt" else "~" + "/.hermes"
+    return Path(os.environ.get("HERMES_HOME") or default).expanduser()
+
+
+def _profiles_path() -> Path:
+    p = _hermes_home() / "jarvis" / "model_profiles.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _load_profiles() -> dict:
+    p = _profiles_path()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_profiles(data: dict) -> None:
+    p = _profiles_path()
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:  # секреты (API-ключи) хранятся в этом файле — best-effort chmod 600, как у telegram_userbot.py
+        os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
+
+
+def list_profiles() -> dict:
+    """Список сохранённых профилей — значения API-ключей маскируются (…последние 4 символа),
+
+    полный ключ никогда не уходит в HUD-фронтенд лишний раз без необходимости."""
+    profiles = _load_profiles()
+    out = {}
+    for name, fields in profiles.items():
+        shown = {}
+        for k, v in fields.items():
+            if k in _SECRET_KEYS and v:
+                shown[k] = f"…{v[-4:]}" if len(v) > 4 else "…"
+            else:
+                shown[k] = v
+        out[name] = shown
+    return {"success": True, "profiles": out, "fields": PROFILE_ALLOWED_KEYS}
+
+
+def save_profile(name: str, fields: dict) -> dict:
+    """Сохранить набор значений под именем профиля (перезаписывает, если имя уже есть)."""
+    name = (name or "").strip()
+    if not name:
+        return {"success": False, "error": "Нужно имя профиля"}
+    clean = {k: (v or "").strip() for k, v in (fields or {}).items() if k in PROFILE_ALLOWED_KEYS and (v or "").strip()}
+    if not clean:
+        return {"success": False, "error": "Нет ни одного заполненного поля"}
+    profiles = _load_profiles()
+    profiles[name] = clean
+    _save_profiles(profiles)
+    return {"success": True, "name": name, "fields": list(clean.keys())}
+
+
+def delete_profile(name: str) -> dict:
+    profiles = _load_profiles()
+    if name not in profiles:
+        return {"success": False, "error": f"Профиль не найден: {name}"}
+    del profiles[name]
+    _save_profiles(profiles)
+    return {"success": True}
+
+
+def apply_profile(name: str, timeout: float = 20.0) -> dict:
+    """Применить сохранённый профиль — по очереди `hermes config set <ключ> <значение>` для
+
+    каждого сохранённого поля (тот же официальный путь, что и apply одного поля/`jarvis ollama use`).
+    Не откатывает при частичной неудаче (в отличие от `jarvis ollama use`) — здесь нет единого
+    «health check» одной модели, т.к. профиль может одновременно менять провайдера и ключ; вместо
+    этого возвращается детальный отчёт по каждому применённому ключу, чтобы пользователь видел,
+    что именно не применилось.
+    """
+    profiles = _load_profiles()
+    if name not in profiles:
+        return {"success": False, "error": f"Профиль не найден: {name}"}
+    hermes = _hermes_bin()
+    if not hermes:
+        return {"success": False, "error": "hermes не найден в PATH"}
+    results = {}
+    ok_all = True
+    for key, value in profiles[name].items():
+        try:
+            out = subprocess.run([hermes, "config", "set", key, value], capture_output=True, text=True, timeout=timeout)
+            success = out.returncode == 0
+            results[key] = {"success": success, "error": None if success else (out.stderr or out.stdout or "").strip()[:200]}
+        except (subprocess.TimeoutExpired, OSError) as e:
+            results[key] = {"success": False, "error": str(e)}
+        ok_all = ok_all and results[key]["success"]
+    return {"success": ok_all, "name": name, "results": results}
 
 
 def _hermes_bin() -> str | None:
