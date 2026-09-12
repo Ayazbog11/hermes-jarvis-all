@@ -9,17 +9,28 @@
 $ErrorActionPreference = "Stop"
 $env:Path = "$env:LOCALAPPDATA\hermes\bin;$env:Path"
 
+# Windows PowerShell 5.1 считает вывод внешней программы в stderr завершающей ошибкой при
+# $ErrorActionPreference = "Stop", даже если он тут же отбрасывается через "2>$null"
+# (https://github.com/PowerShell/PowerShell/issues/3996) — оборачиваем такие вызовы в Quiet.
+function Quiet([scriptblock]$Block) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try { & $Block } finally { $ErrorActionPreference = $prevEap }
+}
+
 function Have([string]$name) {
-    $list = & hermes cron list 2>$null
+    $list = Quiet { & hermes cron list 2>$null }
     return ($list -join "`n") -match [regex]::Escape($name)
 }
 
 function Mk([string]$name, [string]$schedule, [string]$prompt, [string]$skill = "") {
     if (Have $name) { Write-Host "  = $name (уже есть)"; return }
-    if ($skill) {
-        & hermes cron create $schedule $prompt --name $name --skill $skill | Out-Null
-    } else {
-        & hermes cron create $schedule $prompt --name $name | Out-Null
+    Quiet {
+        if ($skill) {
+            & hermes cron create $schedule $prompt --name $name --skill $skill 2>$null | Out-Null
+        } else {
+            & hermes cron create $schedule $prompt --name $name 2>$null | Out-Null
+        }
     }
     if ($LASTEXITCODE -eq 0) { Write-Host "  + $name" } else { Write-Host "  ✖ $name (не удалось создать)" }
 }

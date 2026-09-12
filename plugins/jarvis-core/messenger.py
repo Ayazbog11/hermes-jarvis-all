@@ -21,6 +21,7 @@ Hermes Agent уже умеет `hermes send --to <платформа>[:chat_id[:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -36,7 +37,40 @@ def reset_cache() -> None:
 
 
 def _hermes_bin() -> str | None:
-    return shutil.which("hermes")
+    """Найти `hermes`: сперва PATH, затем известные install-пути под $HERMES_HOME.
+
+    `shutil.which` в одиночку не всегда достаточен на Windows: HUD/gateway часто
+    запущены из процесса (Scheduled Task при логине), унаследовавшего PATH,
+    сохранённый ДО того, как install.ps1 дописал в него bin-каталог Hermes
+    (`[Environment]::SetEnvironmentVariable(..., "User")` подхватывают только новые
+    процессы), либо после самообновления Hermes через Desktop UI, которое иногда
+    удаляет hermes-agent/bin, не обновляя PATH (см. апстрим NousResearch/hermes-agent
+    #91563). В обоих случаях `hermes` реально установлен, но PATH об этом не знает —
+    поэтому при провале PATH проверяем и типовые пути установки напрямую.
+    """
+    found = shutil.which("hermes")
+    if found:
+        return found
+    default = (os.environ.get("LOCALAPPDATA", "") + "/hermes") if os.name == "nt" else "~" + "/.hermes"
+    home = Path(os.environ.get("HERMES_HOME") or default).expanduser()
+    candidates = (
+        [
+            home / "hermes-agent" / "bin" / "hermes.exe",
+            home / "hermes-agent" / "venv" / "Scripts" / "hermes.exe",
+            home / "bin" / "hermes.exe",
+            home / "bin" / "hermes.cmd",
+        ]
+        if os.name == "nt"
+        else [
+            home / "hermes-agent" / "bin" / "hermes",
+            home / "hermes-agent" / "venv" / "bin" / "hermes",
+            Path.home() / ".local" / "bin" / "hermes",
+        ]
+    )
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return None
 
 
 def is_available() -> bool:

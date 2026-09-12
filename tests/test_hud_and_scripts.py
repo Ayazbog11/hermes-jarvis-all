@@ -353,6 +353,77 @@ def test_model_profiles_delete_endpoint(hud_server, monkeypatch):
     assert json.loads(body)["success"] is True
 
 
+# ── /api/update* — кнопка «Обновление» на HUD (раньше единственный способ был написать
+# в чат «обнови JARVIS» и надеяться, что модель вызовет jarvis_update) ──
+
+def test_update_status_endpoint(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.updater, "installed", lambda: {"version": "2.0.1", "channel": "stable", "auto_update": "auto"})
+    monkeypatch.setattr(hud.updater, "read_json", lambda path, default=None: {"available": True, "latest": "2.1.0"})
+    st, body = _get(hud_server + "/api/update")
+    data = json.loads(body)
+    assert st == 200 and data["success"] is True
+    assert data["version"] == "2.0.1" and data["update_available"] is True and data["latest"] == "2.1.0"
+
+
+def test_update_status_endpoint_missing_updater(hud_server, monkeypatch):
+    monkeypatch.setattr(hud, "updater", None)
+    st, body = _get(hud_server + "/api/update")
+    data = json.loads(body)
+    assert data["success"] is False and "update.py" in data["error"]
+
+
+def test_update_check_endpoint(hud_server, monkeypatch):
+    monkeypatch.setattr(hud.updater, "check", lambda: {"available": True, "latest": "2.1.0", "error": ""})
+    req = urllib.request.Request(hud_server + "/api/update/check", data=b"{}",
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    data = json.loads(body)
+    assert data["success"] is True and data["latest"] == "2.1.0"
+
+
+def test_update_apply_endpoint_starts_background_thread(hud_server, monkeypatch):
+    done = threading.Event()
+
+    def fake_apply():
+        done.set()
+        return {"updated": True, "from": "2.0.1", "to": "2.1.0"}
+
+    monkeypatch.setattr(hud.updater, "apply", fake_apply)
+    monkeypatch.setattr(hud, "_UPDATE_IN_PROGRESS", False)
+    req = urllib.request.Request(hud_server + "/api/update/apply", data=b"{}",
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    data = json.loads(body)
+    assert data["success"] is True and data["started"] is True
+    assert done.wait(timeout=3), "apply() не был вызван в фоновом потоке"
+
+
+def test_update_apply_endpoint_rejects_concurrent_run(hud_server, monkeypatch):
+    monkeypatch.setattr(hud, "_UPDATE_IN_PROGRESS", True)
+    req = urllib.request.Request(hud_server + "/api/update/apply", data=b"{}",
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    data = json.loads(body)
+    assert data["success"] is False
+    monkeypatch.setattr(hud, "_UPDATE_IN_PROGRESS", False)  # не мешаем остальным тестам модуля
+
+
+def test_update_rollback_endpoint(hud_server, monkeypatch):
+    done = threading.Event()
+
+    def fake_rollback():
+        done.set()
+        return {"rolled_back": True, "to": "2.0.0"}
+
+    monkeypatch.setattr(hud.updater, "rollback", fake_rollback)
+    monkeypatch.setattr(hud, "_UPDATE_IN_PROGRESS", False)
+    req = urllib.request.Request(hud_server + "/api/update/rollback", data=b"{}",
+                                 headers={"Content-Type": "application/json"})
+    body = urllib.request.urlopen(req, timeout=3).read()
+    assert json.loads(body)["success"] is True
+    assert done.wait(timeout=3), "rollback() не был вызван в фоновом потоке"
+
+
 def test_telegram_status_endpoint_not_configured(hud_server, monkeypatch):
     monkeypatch.setattr(hud.telegram_userbot, "status", lambda: {"available": True, "configured": False, "authorized": False})
     st, body = _get(hud_server + "/api/telegram/status")

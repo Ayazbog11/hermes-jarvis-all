@@ -664,81 +664,13 @@ def win_wallpaper(args: dict) -> str:
 
 
 # ═══════════════════════════════ Продуктивность ════════════════════════════
-
-def _outlook_available() -> bool:
-    out = powershell("try { New-Object -ComObject Outlook.Application | Out-Null; 'ok' } catch { 'no' }", check=False)
-    return out.strip() == "ok"
-
-
-def _events_for_day(day: dt.date) -> list[dict]:
-    """Список событий Outlook-календаря на дату через COM."""
-    script = f'''
-    try {{
-        $ol = New-Object -ComObject Outlook.Application
-        $ns = $ol.GetNamespace("MAPI")
-        $cal = $ns.GetDefaultFolder(9)
-        $items = $cal.Items
-        $items.IncludeRecurrences = $true
-        $items.Sort("[Start]")
-        $start = Get-Date -Year {day.year} -Month {day.month} -Day {day.day} -Hour 0 -Minute 0 -Second 0
-        $end = $start.AddDays(1)
-        $filter = "[Start] >= '" + $start.ToString("g") + "' AND [Start] < '" + $end.ToString("g") + "'"
-        $evs = $items.Restrict($filter)
-        foreach ($e in $evs) {{
-            Write-Output ($e.Subject + "|" + $e.Start.ToString("HH:mm") + "|" + $e.End.ToString("HH:mm"))
-        }}
-    }} catch {{ Write-Output "ERR:$($_.Exception.Message)" }}
-    '''
-    out = powershell(script, timeout=30, check=False)
-    if out.strip().startswith("ERR:"):
-        raise WinError(f"Outlook недоступен или не настроен: {out.strip()[4:]}")
-    events = []
-    for line in win.safe_list(out.splitlines()):
-        parts = line.split("|")
-        if len(parts) >= 3:
-            events.append({"calendar": "Outlook", "title": parts[0], "start": parts[1], "end": parts[2]})
-    events.sort(key=lambda e: e["start"])
-    return events
-
-
-@guarded
-def win_calendar(args: dict) -> str:
-    action = args.get("action")
-    today = dt.date.today()
-    if not _outlook_available() and action != "create":
-        return json_err(
-            "Outlook не установлен/не настроен. Настройте профиль Outlook или используйте win_reminders "
-            "для локальных напоминаний.",
-        )
-    if action == "today":
-        return json_ok(date=str(today), events=_events_for_day(today))
-    if action == "tomorrow":
-        d = today + dt.timedelta(days=1)
-        return json_ok(date=str(d), events=_events_for_day(d))
-    if action == "on_date":
-        d = dt.date.fromisoformat(args["date"])
-        return json_ok(date=str(d), events=_events_for_day(d))
-    if action == "create":
-        title = args.get("title") or "Событие"
-        d = dt.date.fromisoformat(args.get("date") or str(today))
-        hh, mm = (args.get("start_time") or "12:00").split(":")
-        dur = int(args.get("duration_min") or 60)
-        script = f'''
-        try {{
-            $ol = New-Object -ComObject Outlook.Application
-            $appt = $ol.CreateItem(1)
-            $appt.Subject = {as_ps(title)}
-            $appt.Start = Get-Date -Year {d.year} -Month {d.month} -Day {d.day} -Hour {int(hh)} -Minute {int(mm)} -Second 0
-            $appt.Duration = {dur}
-            $appt.Save()
-            Write-Output "ok"
-        }} catch {{ Write-Output "ERR:$($_.Exception.Message)" }}
-        '''
-        out = powershell(script, timeout=30, check=False)
-        if out.strip().startswith("ERR:"):
-            return json_err(f"Не удалось создать событие: {out.strip()[4:]}")
-        return json_ok(created=title, date=str(d), start=f"{int(hh):02d}:{int(mm):02d}", duration_min=dur)
-    return json_err(f"Неизвестное действие: {action}")
+# Раньше здесь был win_calendar/win_contacts на базе Outlook COM (New-Object
+# -ComObject Outlook.Application) — убрано полностью по запросу пользователя: первое
+# обращение к этому COM-объекту без настроенного профиля Outlook открывает мастер
+# регистрации/окно первого запуска Outlook, и (в связке с HUD, который дёргал похожий код
+# в hud/sysinfo.py на каждый тик сборщика) это окно всплывало заново каждые несколько минут
+# даже без единого запроса пользователя. Кроссплатформенный календарь без этой проблемы —
+# jarvis_calendar (Google Calendar, plugins/jarvis-core/gcalendar.py, `jarvis calendar setup`).
 
 
 def _reminders_file() -> Path:
@@ -937,60 +869,6 @@ def win_shortcut(args: dict) -> str:
 
 
 @guarded
-def win_contacts(args: dict) -> str:
-    """Контакты Outlook (COM): поиск и выгрузка для импорта в базу знаний."""
-    action = args.get("action") or "search"
-    limit = int(args.get("limit") or 20)
-    if not _outlook_available():
-        return json_err("Outlook не установлен/не настроен")
-    if action == "search":
-        q = (args.get("query") or "").strip()
-        if not q:
-            return json_err("Нужен query")
-        script = f'''
-        try {{
-            $ol = New-Object -ComObject Outlook.Application
-            $ns = $ol.GetNamespace("MAPI")
-            $contacts = $ns.GetDefaultFolder(10).Items
-            $found = $contacts.Restrict("[FullName] Like '%{args.get("query", "").strip()}%'")
-            $n = 0
-            foreach ($c in $found) {{
-                if ($n -ge {limit}) {{ break }}
-                Write-Output ($c.FullName + "|" + $c.Email1Address + "|" + $c.BusinessTelephoneNumber + "|" + $c.CompanyName)
-                $n++
-            }}
-        }} catch {{ Write-Output "ERR:$($_.Exception.Message)" }}
-        '''
-    elif action == "list":
-        script = f'''
-        try {{
-            $ol = New-Object -ComObject Outlook.Application
-            $ns = $ol.GetNamespace("MAPI")
-            $contacts = $ns.GetDefaultFolder(10).Items
-            $n = 0
-            foreach ($c in $contacts) {{
-                if ($n -ge {limit}) {{ break }}
-                if ($c.CompanyName) {{ Write-Output ($c.FullName + "|||" + $c.CompanyName); $n++ }}
-            }}
-        }} catch {{ Write-Output "ERR:$($_.Exception.Message)" }}
-        '''
-    else:
-        return json_err(f"Неизвестное действие: {action}")
-    out = powershell(script, timeout=60, check=False)
-    if out.strip().startswith("ERR:"):
-        return json_err(out.strip()[4:])
-    rows, seen = [], set()
-    for line in win.safe_list(out.splitlines()):
-        parts = (line.split("|") + ["", "", "", ""])[:4]
-        name = parts[0].strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        rows.append({"name": name, "email": parts[1].strip(), "phone": parts[2].strip(), "org": parts[3].strip()})
-    return json_ok(action=action, count=len(rows), contacts=rows)
-
-
-@guarded
 def win_focus(args: dict) -> str:
     """Focus Assist Windows (реестр CurrentUserSession\\QuietHours)."""
     action = args.get("action") or "get"
@@ -1106,7 +984,6 @@ HANDLERS = {
     "win_screenshot": win_screenshot,
     "win_camera_snap": win_camera_snap,
     "win_wallpaper": win_wallpaper,
-    "win_calendar": win_calendar,
     "win_reminders": win_reminders,
     "win_notes": win_notes,
     "win_clipboard": win_clipboard,
@@ -1114,7 +991,6 @@ HANDLERS = {
     "win_window": win_window,
     "win_shortcut": win_shortcut,
     "win_file_manage": win_file_manage,
-    "win_contacts": win_contacts,
     "win_focus": win_focus,
     "win_powershell": win_powershell,
 }

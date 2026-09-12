@@ -175,7 +175,7 @@ tts:
 |---|---|---|---|---|
 | Приложения/окна/громкость/яркость/Wi-Fi/BT | ✅ `mac_*` | ✅ `win_*` | ✅ `linux_*` | На Linux зависит от установленных утилит (см. таблицу выше) |
 | Скриншоты, буфер обмена, набор текста, хоткеи | ✅ | ✅ | ✅ | На Wayland часть операций (произвольные хоткеи) ограничена без `ydotool` |
-| Календарь/контакты | ✅ Calendar.app/Contacts.app | ✅ Outlook (COM) | ⚠️ только `khal`, если настроен | Без CalDAV-клиента доступны только локальные напоминания |
+| Календарь | ✅ Google Calendar (`jarvis_calendar`) | ✅ Google Calendar (`jarvis_calendar`) | ✅ Google Calendar, или `khal`, если настроен | Единый `jarvis_calendar` на всех трёх ОС — Outlook (COM) убран полностью |
 | Заметки | ✅ Notes.app | ✅ файлы `.md` | ✅ файлы `.md` | Кроссплатформенно |
 | Focus/«Не беспокоить» | ✅ get+set | ⚠️ только заглушка `get` | ✅ get+set только на GNOME (`gsettings`) | На KDE/XFCE — ограничение, инструмент честно об этом сообщает |
 | Автозапуск | ✅ launchd | ✅ Планировщик заданий | ✅ systemd --user | `config/systemd/*.service` |

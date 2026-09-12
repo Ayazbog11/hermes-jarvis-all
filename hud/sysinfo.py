@@ -159,23 +159,54 @@ return output
 '''
 
 
-_CAL_SCRIPT_WIN = '''
-try {
-    $ol = New-Object -ComObject Outlook.Application
-    $ns = $ol.GetNamespace("MAPI")
-    $cal = $ns.GetDefaultFolder(9)
-    $items = $cal.Items
-    $items.IncludeRecurrences = $true
-    $items.Sort("[Start]")
-    $start = (Get-Date).Date
-    $end = $start.AddDays(1)
-    foreach ($e in $items) {
-        if ($e.Start -ge $start -and $e.Start -lt $end) {
-            Write-Output ("Outlook|" + $e.Subject + "|" + $e.Start.ToString("HH:mm") + "|" + $e.End.ToString("HH:mm") + "|" + $e.AllDayEvent.ToString().ToLower())
-        }
-    }
-} catch { }
-'''
+def _import_gcalendar():
+    """jarvis-core/gcalendar.py — кроссплатформенный Google Calendar (см. модуль для деталей).
+
+    Раньше календарь «Сегодня» на Windows читался через COM (New-Object -ComObject
+    Outlook.Application): первое обращение к этому объекту без настроенного профиля Outlook
+    открывает мастер регистрации/профиля Outlook — а Collector.refresh() дёргал его каждые
+    `slow` секунд (по умолчанию раз в пару минут) БЕЗУСЛОВНО, отчего это окно всплывало заново
+    снова и снова у любого пользователя без настроенного Outlook. Заменено на тот же Google
+    Calendar, которым уже пользуется watchdog (plugins/jarvis-core/__init__.py::Watchdog);
+    если он не подключён (`jarvis calendar setup`) — виджет просто пуст, никаких окон.
+    """
+    import importlib.util
+
+    here = Path(__file__).resolve().parent
+    for candidate in (
+        Path(os.environ.get("HERMES_HOME") or "").expanduser() / "plugins" / "jarvis-core" / "gcalendar.py",
+        here.parent / "plugins" / "jarvis-core" / "gcalendar.py",       # дерево репозитория
+        here.parent.parent / "plugins" / "jarvis-core" / "gcalendar.py",
+    ):
+        if candidate.is_file():
+            try:
+                spec = importlib.util.spec_from_file_location("jarvis_hud_gcalendar", candidate)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    return mod
+            except Exception:
+                return None
+    return None
+
+
+_GCAL = _import_gcalendar()
+
+
+def _calendar_today_gcal() -> list[dict] | None:
+    """События на сегодня из Google Calendar (см. _import_gcalendar) — используется на Windows
+
+    (замена убранного Outlook COM) и как источник по умолчанию, если ничего платформенного нет."""
+    if _GCAL is None or not _GCAL.has_client() or not _GCAL.is_authorized():
+        return None
+    try:
+        start = dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).astimezone()
+        end = start + dt.timedelta(days=1)
+        events = _GCAL.list_events(start.isoformat(), end.isoformat())
+    except Exception:
+        return None
+    return [{"calendar": "Google", "title": e["title"], "start": e["start_label"], "end": e["end_label"],
+             "all_day": e["all_day"]} for e in events]
 
 
 def _calendar_today_linux() -> list[dict] | None:
@@ -196,16 +227,19 @@ def _calendar_today_linux() -> list[dict] | None:
 
 
 def calendar_today() -> list[dict] | None:
-    """События на сегодня: Calendar.app (macOS, AppleScript), Outlook (Windows, COM) или khal (Linux, опционально).
+    """События на сегодня: Google Calendar (Windows — jarvis-core/gcalendar.py, если настроен
+    через `jarvis calendar setup`), Calendar.app (macOS, AppleScript), khal (Linux, опционально)
+    с запасным вариантом Google Calendar там, где платформенного источника нет/он пуст.
     Медленно — вызывать из фонового потока."""
+    if IS_WINDOWS:
+        return _calendar_today_gcal()
     if IS_LINUX:
-        return _calendar_today_linux()
+        khal_events = _calendar_today_linux()
+        return khal_events if khal_events is not None else _calendar_today_gcal()
     if IS_MAC:
         out = _run(["osascript", "-e", _CAL_SCRIPT], timeout=45)
-    elif IS_WINDOWS:
-        out = _powershell(_CAL_SCRIPT_WIN, timeout=45)
     else:
-        return None
+        return _calendar_today_gcal()
 
     def hm(s: str) -> str:
         h, _, m = s.partition(":")
@@ -216,12 +250,8 @@ def calendar_today() -> list[dict] | None:
         parts = line.split("|")
         if len(parts) < 5:
             continue
-        if IS_WINDOWS:
-            events.append({"calendar": parts[0], "title": parts[1], "start": parts[2], "end": parts[3],
-                           "all_day": parts[4].strip() == "true"})
-        else:
-            events.append({"calendar": parts[0], "title": parts[1], "start": hm(parts[2]), "end": hm(parts[3]),
-                           "all_day": parts[4].strip() == "true"})
+        events.append({"calendar": parts[0], "title": parts[1], "start": hm(parts[2]), "end": hm(parts[3]),
+                       "all_day": parts[4].strip() == "true"})
     events.sort(key=lambda e: (not e["all_day"], e["start"]))
     return events
 

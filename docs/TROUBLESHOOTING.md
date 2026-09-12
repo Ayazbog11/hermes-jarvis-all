@@ -65,6 +65,7 @@ jarvis hud log           # лог HUD
 | 401 из API | Ключ в `.env` изменился после запуска HUD — `jarvis hud restart` |
 | Видео на панели не играет | YouTube-embed требует интернет; локальные mp4 — только из белого списка папок (`~/Desktop`, `~/Downloads`, `~/Pictures`, `~/.hermes`) |
 | Голос в HUD не работает | Web Speech API есть в Safari/Chrome, нет в Firefox; нужен `https` или `localhost` |
+| Кнопки модели/профиля/«Отправить сообщение» в HUD ничего не делают | HUD не может найти `hermes` (обычно на Windows после обновления PATH, см. раздел Windows ниже) — обновите JARVIS до ≥2.1.0 (там `_hermes_bin()` ищет бинарник и напрямую в `$HERMES_HOME`, не только через PATH) и перезапустите `jarvis hud restart` |
 
 ## База знаний (jarvis-brain)
 
@@ -192,12 +193,28 @@ setup` в терминале (один раз: `api_id`/`api_hash` с my.telegra
 и коду). `jarvis telegram status` покажет, настроен ли и под каким аккаунтом авторизован. Если
 `telethon не установлен` — `pip install telethon` (ставится автоматически установщиком).
 
-### Outlook (fallback-календарь и контакты)
+### Outlook — интеграция удалена
 
-`win_calendar` (только как fallback — по умолчанию используется `jarvis_calendar`/Google) и
-`win_contacts` идут через COM-объект `Outlook.Application` — Outlook должен быть установлен
-и хоть раз открыт с настроенным профилем по умолчанию. Новый интерфейс «Outlook (new)»/веб-версия по COM
-недоступны — нужен классический Outlook (Win32).
+`win_calendar`/`win_contacts` (COM-объект `Outlook.Application`) убраны из JARVIS полностью:
+первое обращение к этому COM-объекту без настроенного профиля Outlook по умолчанию открывает
+мастер регистрации/окно первого запуска Outlook, и это окно всплывало заново каждые несколько
+минут (HUD дёргал похожий код в фоне на каждое обновление виджета «Сегодня»), даже когда
+Outlook пользователю не нужен. Единственный календарь JARVIS теперь — кроссплатформенный
+`jarvis_calendar` (Google Calendar, `jarvis calendar setup`); для контактов используйте
+`brain_remember`/базу знаний JARVIS.
+
+### Не получается сменить модель ИИ в HUD (кнопки ничего не делают)
+
+Причина почти всегда — HUD/gateway не может найти `hermes.exe`, хотя он установлен: `hermes` при
+установке добавляется в PATH пользователя (`[Environment]::SetEnvironmentVariable(..., "User")`),
+но это подхватывают только **новые** процессы. HUD/gateway обычно запущены через Планировщик
+заданий, стартовавший при входе в систему ещё до того, как PATH обновился, — процесс живёт с
+устаревшим PATH до следующей перезагрузки/перезапуска. Дополнительно самообновление Hermes через
+Desktop UI иногда удаляет `hermes-agent\bin`, не трогая PATH. С версии 2.1.0 `scripts/model_switch.py`
+и `plugins/jarvis-core/messenger.py` при провале PATH ищут `hermes.exe` напрямую под `%LOCALAPPDATA%\hermes`
+(`hermes-agent\bin`, `hermes-agent\venv\Scripts`, `bin`), так что проблема должна исчезнуть сама
+после обновления JARVIS. Если сохраняется: `jarvis hud restart` (пересоздаёт процесс с текущим PATH)
+или проверьте, что `hermes` вообще виден: `Get-Command hermes`.
 
 ### Полный сброс JARVIS (без потери памяти Hermes)
 

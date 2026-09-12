@@ -52,7 +52,16 @@
   .chip.show{display:inline-block}
   #modeChip{background:rgba(139,124,255,.14);color:#b3a9ff}
 
-  .col{display:flex;flex-direction:column;gap:20px;min-height:0;overflow:hidden;padding-top:12px}
+  .col{display:flex;flex-direction:column;gap:20px;min-height:0;overflow-y:auto;overflow-x:hidden;padding-top:12px;padding-right:4px;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+  .col::-webkit-scrollbar{width:6px}
+  .col::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+  .card.hidden-card{display:none}
+  #widgetsBtn{background:transparent;border:0;color:var(--text-2);cursor:pointer;padding:6px;border-radius:10px;display:flex;align-items:center;margin-left:6px}
+  #widgetsBtn:hover{background:var(--line);color:var(--text)}
+  #widgetsMenu{position:fixed;top:56px;right:28px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;z-index:50;display:none;min-width:220px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  #widgetsMenu.show{display:block}
+  #widgetsMenu label{display:flex;align-items:center;gap:9px;padding:7px 6px;border-radius:9px;font-size:13px;cursor:pointer}
+  #widgetsMenu label:hover{background:var(--line)}
   .col.right{align-items:stretch}
   body.zen .col{display:none}
   body.zen #app{grid-template-columns:0 1fr 0}
@@ -214,13 +223,15 @@
   <header>
     <div class="wordmark">JARVIS</div>
     <div class="hright">
-      <span class="chip" id="updChip" title="Доступно обновление">Обновление</span>
+      <span class="chip" id="updChip" title="Доступно обновление — нажмите, чтобы установить">Обновление</span>
       <span class="chip" id="modeChip"></span>
       <span class="status" id="status"><i></i><span id="statusTx">Подключение…</span></span>
       <span class="sep"></span>
       <span id="clock">--:--</span>
+      <button id="widgetsBtn" title="Показать/скрыть виджеты боковых панелей"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
     </div>
   </header>
+  <div id="widgetsMenu"></div>
 
   <div class="col left" id="colL">
     <section class="card" id="cardToday">
@@ -444,8 +455,10 @@
     const focusOn = mode==='focus'; const fname = f && f.active ? f.name : '';
     const focusRow = `<div class="row sys"><span class="tile violet">${ICON.moon}</span><span class="tx"><b>Режим фокуса</b><small>${focusOn?'JARVIS отвечает кратко':(fname?'macOS: '+esc(fname):'уведомления и подсказки включены')}</small></span><button class="pill ${focusOn?'on':''}" id="focusToggle">${focusOn?'Вкл':'Выкл'}</button></div>`;
     const modelRow = `<div class="row sys"><span class="tile">${ICON.box}</span><span class="tx"><small style="margin:0 0 2px">Модель</small><b>${esc(dash.model||'—')}</b></span><span class="chev">${v.version?`<span class="muted" style="font-size:12px">v${esc(v.version)}</span>`:''}</span></div>`;
-    b.innerHTML = battRow + focusRow + modelRow;
+    const updRow = v.update_available ? `<div class="row sys"><span class="tile amber">${ICON.box}</span><span class="tx"><b>Доступно обновление</b><small>версия ${esc(v.latest||'?')}</small></span><button class="pill on" id="sysUpdateBtn">Обновить</button></div>` : '';
+    b.innerHTML = battRow + focusRow + modelRow + updRow;
     $('#focusToggle').onclick = async () => { const m = focusOn?'normal':'focus'; dash.mode = m; renderSystem(); await post('/api/mode',{mode:m}); };
+    if ($('#sysUpdateBtn')) $('#sysUpdateBtn').onclick = startUpdate;
     $('#modeChip').textContent = {focus:'Фокус', night:'Ночь', presentation:'Презентация'}[mode]||''; $('#modeChip').classList.toggle('show', mode!=='normal');
     document.body.classList.toggle('night', mode==='night');
     $('#updChip').classList.toggle('show', !!v.update_available); if (v.latest) $('#updChip').textContent = 'Обновление ' + v.latest;
@@ -460,6 +473,47 @@
   function renderAll(){ renderCalendar(); renderKnowledge(); renderSystem(); renderTimers(); }
   async function loadDash(){ try { dash = await (await fetch('/api/dashboard')).json(); renderAll(); } catch {} }
   loadDash(); setInterval(loadDash, 30000);
+
+  // ── Виджеты боковых панелей: скрыть/показать по одному, колонки скроллятся сами (CSS)
+  // когда виджетов больше, чем влезает по высоте. Видимость сохраняется в localStorage —
+  // переживает перезагрузку страницы. ──
+  const WIDGET_PREFS_KEY = 'jarvis-hidden-widgets';
+  function loadHiddenWidgets(){ try { return new Set(JSON.parse(localStorage.getItem(WIDGET_PREFS_KEY)||'[]')); } catch { return new Set(); } }
+  function saveHiddenWidgets(set){ try { localStorage.setItem(WIDGET_PREFS_KEY, JSON.stringify([...set])); } catch {} }
+  function widgetCards(){ return [...document.querySelectorAll('#colL .card, #colR .card')]; }
+  function applyWidgetVisibility(){
+    const hidden = loadHiddenWidgets();
+    widgetCards().forEach(c => c.classList.toggle('hidden-card', hidden.has(c.id)));
+  }
+  function toggleWidget(id, show){
+    const hidden = loadHiddenWidgets();
+    if (show) hidden.delete(id); else hidden.add(id);
+    saveHiddenWidgets(hidden);
+    applyWidgetVisibility();
+  }
+  function renderWidgetsMenu(){
+    const hidden = loadHiddenWidgets();
+    const menu = $('#widgetsMenu');
+    menu.innerHTML = widgetCards().map(c => {
+      const title = c.querySelector('h2')?.textContent || c.id;
+      const checked = !hidden.has(c.id);
+      return `<label><input type="checkbox" data-id="${c.id}" ${checked?'checked':''}> ${esc(title)}</label>`;
+    }).join('');
+    menu.querySelectorAll('input[type=checkbox]').forEach(inp => {
+      inp.onchange = () => toggleWidget(inp.dataset.id, inp.checked);
+    });
+  }
+  $('#widgetsBtn').onclick = e => {
+    e.stopPropagation();
+    renderWidgetsMenu();
+    $('#widgetsMenu').classList.toggle('show');
+  };
+  document.addEventListener('click', e => {
+    if (!$('#widgetsMenu').contains(e.target) && e.target !== $('#widgetsBtn') && !$('#widgetsBtn').contains(e.target)) {
+      $('#widgetsMenu').classList.remove('show');
+    }
+  });
+  applyWidgetVisibility();
 
   // ── «Расход» — токены/стоимость за 30 дней (jarvis usage, см. scripts/usage_report.py) ──
   async function loadUsage(){
@@ -629,7 +683,17 @@
   $('#timersMore').onclick = async () => { for (const t of dash.timers||[]) await post('/api/timer',{action:'cancel',label:t.label,target:t.target}); loadDash(); };
   $('#timerAdd').onclick = () => { $('#tform').classList.toggle('show'); $('#tMin').focus(); };
   $('#tform').onsubmit = async e => { e.preventDefault(); const m = +$('#tMin').value; if (!m) return; await post('/api/timer',{action:'set', minutes:m, label:$('#tLabel').value||`Таймер ${m} мин`}); $('#tform').classList.remove('show'); $('#tMin').value=''; $('#tLabel').value=''; loadDash(); };
-  $('#updChip').onclick = () => send('Обнови JARVIS до последней версии.');
+  // ── Обновление JARVIS — прямая кнопка на HUD (раньше единственный способ был написать
+  // текстом в чат и надеяться, что модель вызовет jarvis_update; теперь это REST-вызов) ──
+  async function startUpdate(){
+    if (!confirm('Установить обновление JARVIS сейчас? Сервисы перезапустятся.')) return;
+    toast('Обновление запущено…', 'bolt', 'cyan', 8);
+    try {
+      const r = await post('/api/update/apply', {});
+      if (!r.success) toast(`Не удалось запустить обновление: ${r.error||'ошибка'}`, 'bell', 'amber', 15);
+    } catch { toast('HUD не смог связаться с update.py', 'bell', 'amber'); }
+  }
+  $('#updChip').onclick = startUpdate;
 
   // ───────────────────────── лента активности ─────────────────────────
   const feed = [];
@@ -713,6 +777,11 @@
     on('brain.update', d => log('', `память · ${esc(d.content||'')}`));
     on('brain.stats', () => loadDash());
     on('vault.update', d => { log('', `хранилище · ${d.action==='add'?'подключён проект '+esc(d.name||''):'проиндексировано '+(d.indexed||0)}`); loadDash(); });
+    on('update.progress', d => {
+      if (d.success) toast(d.updated ? `JARVIS обновлён до ${d.to||'?'}` : (d.rolled_back ? `Откат на ${d.to||'?'}` : (d.reason||'Обновление завершено')), 'bolt', 'green', 12);
+      else toast(`Обновление не удалось: ${(d.error||'').slice(0,200)}`, 'bell', 'amber', 20);
+      loadDash();
+    });
     on('hud.online', () => {});
   }
   function setStatus(sse){ const st=$('#status'); const api = !!(dash.hermes_up); st.className = 'status ' + (sse && api ? 'on' : sse ? '' : 'off'); $('#statusTx').textContent = !sse ? 'Нет связи с HUD' : api ? 'Online' : 'Hermes API выключен'; }

@@ -280,28 +280,6 @@ WIN_WALLPAPER = {
 
 # ─────────────────────────────── Продуктивность ────────────────────────────
 
-WIN_CALENDAR = {
-    "name": "win_calendar",
-    "description": (
-        "УСТАРЕЛО для большинства пользователей — предпочитай кроссплатформенный jarvis_calendar (Google Calendar, "
-        "не требует Outlook). Используй win_calendar только если пользователь явно просит именно Outlook и он "
-        "у него установлен и настроен: события на сегодня/завтра/дату, создать событие. "
-        "Если Outlook не настроен — вернёт понятную ошибку."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "action": {"type": "string", "enum": ["today", "tomorrow", "on_date", "create"]},
-            "date": {"type": "string", "description": "Дата YYYY-MM-DD для on_date/create"},
-            "title": {"type": "string", "description": "Название события (create)"},
-            "start_time": {"type": "string", "description": "HH:MM (create)"},
-            "duration_min": {"type": "integer", "default": 60},
-            "calendar": {"type": "string", "description": "Имя календаря Outlook; по умолчанию — основной"},
-        },
-        "required": ["action"],
-    },
-}
-
 WIN_REMINDERS = {
     "name": "win_reminders",
     "description": "Напоминания: локальный список (хранится в базе знаний JARVIS) — список активных, добавить (с датой/временем), отметить выполненным. «Напомни завтра в 9 позвонить маме».",
@@ -393,23 +371,6 @@ WIN_SHORTCUT = {
     },
 }
 
-WIN_CONTACTS = {
-    "name": "win_contacts",
-    "description": (
-        "Контакты Outlook (если настроен): search — найти человека по имени (email, телефон, организация); "
-        "list — контакты с организацией. Персональные данные — не передавай наружу без нужды."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "action": {"type": "string", "enum": ["search", "list"], "default": "search"},
-            "query": {"type": "string"},
-            "limit": {"type": "integer", "default": 20},
-        },
-        "required": ["action"],
-    },
-}
-
 WIN_FOCUS = {
     "name": "win_focus",
     "description": (
@@ -460,6 +421,6 @@ WIN_POWERSHELL = {
 ALL_SCHEMAS = [
     WIN_APP, WIN_OPEN, WIN_SEARCH, WIN_EXPLORER,
     WIN_VOLUME, WIN_BRIGHTNESS, WIN_DARK_MODE, WIN_POWER, WIN_PROCESS, WIN_WIFI, WIN_BLUETOOTH, WIN_BATTERY, WIN_SYSTEM_INFO,
-    WIN_MEDIA, WIN_SAY, WIN_NOTIFY, WIN_SCREENSHOT, WIN_CAMERA_SNAP, WIN_WALLPAPER, WIN_FILE_MANAGE, WIN_CONTACTS, WIN_FOCUS,
-    WIN_CALENDAR, WIN_REMINDERS, WIN_NOTES, WIN_CLIPBOARD, WIN_TYPE, WIN_WINDOW, WIN_SHORTCUT, WIN_POWERSHELL,
+    WIN_MEDIA, WIN_SAY, WIN_NOTIFY, WIN_SCREENSHOT, WIN_CAMERA_SNAP, WIN_WALLPAPER, WIN_FILE_MANAGE, WIN_FOCUS,
+    WIN_REMINDERS, WIN_NOTES, WIN_CLIPBOARD, WIN_TYPE, WIN_WINDOW, WIN_SHORTCUT, WIN_POWERSHELL,
 ]

@@ -38,11 +38,29 @@ def test_is_available_true_and_cached(monkeypatch, core):
     assert len(calls) == 1  # закэшировано
 
 
-def test_send_without_hermes_binary(monkeypatch, core):
+def test_send_without_hermes_binary(monkeypatch, core, tmp_path):
     monkeypatch.setattr(core.messenger.shutil, "which", lambda _: None)
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))  # каталог пуст — ни один fallback-путь не существует
     r = core.messenger.send("telegram", "привет")
     assert r["success"] is False
     assert "hermes" in r["error"]
+
+
+def test_hermes_bin_falls_back_when_path_stale(monkeypatch, core, tmp_path):
+    """PATH унаследованный HUD/gateway-процессом от Scheduled Task при логине может быть
+    записан до того, как install.ps1 дописал в него bin Hermes, либо самообновление
+    Hermes через Desktop UI удалило hermes-agent/bin, не тронув PATH (см. апстрим
+    NousResearch/hermes-agent #91563). `_hermes_bin()` должен в этом случае найти бинарник
+    напрямую под $HERMES_HOME, а не считать, что Hermes не установлен.
+    """
+    monkeypatch.setattr(core.messenger.shutil, "which", lambda _: None)
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    bin_dir = tmp_path / "hermes-agent" / "bin"
+    bin_dir.mkdir(parents=True)
+    exe_name = "hermes.exe" if core.messenger.os.name == "nt" else "hermes"
+    fake_hermes = bin_dir / exe_name
+    fake_hermes.write_text("fake")
+    assert core.messenger._hermes_bin() == str(fake_hermes)
 
 
 def test_send_empty_target_or_text(monkeypatch, core):

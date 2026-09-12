@@ -339,30 +339,17 @@ def upcoming_events(lead_min: int) -> list[dict]:
                 evs.append({"title": t.strip(), "start": st.strip()})
         return evs
     if IS_WINDOWS:
-        script = f'''
-        try {{
-            $ol = New-Object -ComObject Outlook.Application
-            $ns = $ol.GetNamespace("MAPI")
-            $cal = $ns.GetDefaultFolder(9)
-            $items = $cal.Items
-            $items.IncludeRecurrences = $true
-            $items.Sort("[Start]")
-            $now = Get-Date
-            $end = $now.AddMinutes({lead_min})
-            foreach ($e in $items) {{
-                if ($e.Start -ge $now -and $e.Start -le $end) {{
-                    Write-Output ($e.Subject + "|" + $e.Start.ToString("HH:mm"))
-                }}
-            }}
-        }} catch {{ }}
-        '''
-        out = _powershell(script, timeout=20)
-        evs = []
-        for line in out.splitlines():
-            if "|" in line:
-                t, st = line.split("|", 1)
-                evs.append({"title": t.strip(), "start": st.strip()})
-        return evs
+        # Раньше здесь был Outlook COM (New-Object -ComObject Outlook.Application) — убран:
+        # 1) требовал установленный/настроенный MS Outlook (у большинства пользователей его нет —
+        #    Gmail/Google Workspace/встроенная почта), поэтому события просто не показывались;
+        #    2) первое обращение к COM-объекту Outlook в системе без запущенного профиля
+        #    открывает мастер профиля/окно регистрации Outlook — этот вызов повторялся каждый
+        #    watchdog-тик (по умолчанию раз в несколько минут), из-за чего окно всплывало
+        #    непрерывно, даже когда watch_calendar не нужен пользователю с настроенным Outlook.
+        # Кроссплатформенный источник — Google Calendar (jarvis-core/gcalendar.py), который
+        # вызывающая сторона (Watchdog.upcoming_events) уже проверяет раньше этого fallback'а;
+        # если он не настроен — календарных напоминаний на Windows просто не будет (безопасно).
+        return []
     if IS_LINUX:
         # Нет единого системного календаря на Linux; поддерживаем khal (CLI поверх vdirsyncer/CalDAV),
         # если он установлен и настроен — иначе честно возвращаем пусто.

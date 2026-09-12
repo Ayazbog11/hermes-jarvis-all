@@ -107,9 +107,15 @@ telegram_userbot = _import_by_path(
     HERE.parent / "plugins" / "jarvis-core" / "telegram_userbot.py",
     HERE.parent.parent / "plugins" / "jarvis-core" / "telegram_userbot.py",
 )
+updater = _import_by_path(
+    "jarvis_hud_update",
+    HERE.parent / "update.py",              # установлено: $JARVIS_HOME/update.py (сосед hud/)
+    HERE.parent / "scripts" / "update.py",   # дерево репозитория: scripts/update.py
+)
 
 DASH: sysinfo.Collector | None = None
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
+_UPDATE_IN_PROGRESS = False
 
 CONFIG = {
     "hermes_url": os.environ.get("JARVIS_HERMES_URL", "http://127.0.0.1:8642"),
@@ -401,6 +407,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._model_profiles_get()
         if u.path == "/api/telegram/status":
             return self._telegram_status()
+        if u.path == "/api/update":
+            return self._update_status()
         if u.path == "/file":
             p = parse_qs(u.query).get("path", [""])[0]
             real = os.path.realpath(os.path.expanduser(p))
@@ -464,6 +472,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._model_profiles_apply(self._read_json())
         if u.path == "/api/model/profiles/delete":
             return self._model_profiles_delete(self._read_json())
+        if u.path == "/api/update/check":
+            return self._update_action("check")
+        if u.path == "/api/update/apply":
+            return self._update_action("apply")
+        if u.path == "/api/update/rollback":
+            return self._update_action("rollback")
         return self._json(404, {"error": "not found"})
 
     def _tts(self, body: dict) -> None:
@@ -695,6 +709,54 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"success": False, "error": "model_switch.py недоступен"})
         name = str(body.get("name") or "").strip()
         return self._json(200, model_switch.delete_profile(name))
+
+    # ── Обновление JARVIS (кнопка «Обновление» на HUD) ──────────────────────
+    def _update_status(self) -> None:
+        """GET /api/update — версия/канал/режим автообновления + доступна ли новая (без сети,
+
+        те же файлы install.json/update.json, что читает jarvis_update; см. scripts/update.py)."""
+        if updater is None:
+            return self._json(200, {"success": False, "error": "update.py недоступен"})
+        cur = updater.installed()
+        upd = updater.read_json(updater.UPDATE_JSON)
+        return self._json(200, {
+            "success": True, "version": cur.get("version", "?"), "channel": cur.get("channel", "stable"),
+            "auto_update": cur.get("auto_update", "check"), "update_available": bool(upd.get("available")),
+            "latest": upd.get("latest"), "last_check": upd.get("checked_at"), "last_error": upd.get("error", ""),
+            "updating": bool(_UPDATE_IN_PROGRESS),
+        })
+
+    def _update_action(self, action: str) -> None:
+        """POST /api/update/check|apply|rollback — прямая кнопка на HUD (раньше обновление можно
+
+        было запустить только текстом в чат — «обнови JARVIS», полагаясь на то, что модель вызовет
+        jarvis_update; теперь это явная REST-кнопка, не завязанная на LLM). check выполняется сразу
+        (быстро, без установки); apply/rollback — в фоновом потоке (могут идти минуты), статус —
+        через /api/update и событие BUS "update.progress"."""
+        if updater is None:
+            return self._json(200, {"success": False, "error": "update.py недоступен"})
+        if action == "check":
+            try:
+                return self._json(200, {"success": True, **updater.check()})
+            except Exception as e:
+                return self._json(200, {"success": False, "error": str(e)[:300]})
+        global _UPDATE_IN_PROGRESS
+        if _UPDATE_IN_PROGRESS:
+            return self._json(200, {"success": False, "error": "обновление уже выполняется"})
+        _UPDATE_IN_PROGRESS = True
+
+        def worker():
+            global _UPDATE_IN_PROGRESS
+            try:
+                result = updater.apply() if action == "apply" else updater.rollback()
+                BUS.publish({"event": "update.progress", "data": {"action": action, "success": True, **result}})
+            except Exception as e:
+                BUS.publish({"event": "update.progress", "data": {"action": action, "success": False, "error": str(e)[:400]}})
+            finally:
+                _UPDATE_IN_PROGRESS = False
+
+        threading.Thread(target=worker, name=f"hud-update-{action}", daemon=True).start()
+        return self._json(200, {"success": True, "started": True, "action": action})
 
     def do_OPTIONS(self):
         # CORS-preflight сознательно не разрешаем: HUD — same-origin приложение

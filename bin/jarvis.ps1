@@ -55,6 +55,24 @@ function Need([string]$exe, [string]$hint = "установите её") {
     if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { Fail "нужна команда $exe — $hint" }
 }
 
+# Windows PowerShell 5.1 (в отличие от pwsh 7+) считает ЛЮБОЙ байт, написанный внешней
+# программой (schtasks.exe, curl.exe, hermes.exe…) в stderr, ОШИБКОЙ ПОТОКА ОШИБОК PowerShell —
+# и при $ErrorActionPreference = "Stop" (стоит в начале файла) эта ошибка становится
+# СКРИПТ-ЗАВЕРШАЮЩЕЙ, даже если вывод сразу же отбрасывается через "2>$null" или "2>&1"
+# (https://github.com/PowerShell/PowerShell/issues/3996 — исправлено только в pwsh 7.2+, и то не
+# по умолчанию). Раньше это ломало «jarvis gateway»/«jarvis hud» и т.п. на первом же вызове
+# schtasks для отсутствующей задачи (обычная, ожидаемая ситуация — задача ещё не создана):
+# PowerShell выводил "NativeCommandError" и завершал скрипт вместо того, чтобы просто вернуть
+# false. Оборачиваем каждый вызов внешней программы, чей stderr мы осознанно игнорируем/проверяем
+# по $LASTEXITCODE, в Quiet — она на время вызова временно снижает ErrorActionPreference и
+# гарантированно восстанавливает его сразу после (даже при исключении), не влияя на остальной
+# скрипт (там, где нужна обычная строгая обработка ошибок, Stop как был, так и остаётся).
+function Quiet([scriptblock]$Block) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try { & $Block } finally { $ErrorActionPreference = $prevEap }
+}
+
 # ─────────────────────────────── HUD ────────────────────────────────────
 
 function Hud-PidAlive {
@@ -65,12 +83,12 @@ function Hud-PidAlive {
 }
 function Hud-PortAlive {
     try {
-        $r = curl.exe -s -m 1 -o NUL -w "%{http_code}" "http://127.0.0.1:$HudPort/api/status" 2>$null
+        $r = Quiet { curl.exe -s -m 1 -o NUL -w "%{http_code}" "http://127.0.0.1:$HudPort/api/status" 2>$null }
         return $LASTEXITCODE -eq 0 -and $r -match "^\d{3}$"
     } catch { return $false }
 }
 function Hud-Running { (Hud-PidAlive) -or (Hud-PortAlive) }
-function Hud-TaskExists { (schtasks /Query /TN "JARVIS-HUD" 2>$null | Out-Null); $LASTEXITCODE -eq 0 }
+function Hud-TaskExists { Quiet { schtasks /Query /TN "JARVIS-HUD" 2>$null | Out-Null }; $LASTEXITCODE -eq 0 }
 
 function Hud-Start {
     if (Hud-PidAlive) { Say "HUD уже запущен (pid $(Get-Content $HudPidFile))"; return }
@@ -90,7 +108,7 @@ function Hud-Stop {
         Remove-Item $HudPidFile -ErrorAction SilentlyContinue
         Say "HUD остановлен"
     } elseif (Hud-TaskExists) {
-        schtasks /End /TN "JARVIS-HUD" 2>$null | Out-Null
+        Quiet { schtasks /End /TN "JARVIS-HUD" 2>$null | Out-Null }
         Say "HUD остановлен (задача Планировщика завершена до следующего запуска)"
     } elseif (Hud-PortAlive) {
         Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" |
@@ -105,17 +123,17 @@ function Hud-Stop {
 
 # ─────────────────────────────── Gateway ────────────────────────────────
 
-function Gateway-Running { (& hermes gateway status 2>$null) -match "running|запущен|active" }
-function Gateway-TaskExists { schtasks /Query /TN "JARVIS-Gateway" 2>$null | Out-Null; $LASTEXITCODE -eq 0 }
+function Gateway-Running { (Quiet { & hermes gateway status 2>$null }) -match "running|запущен|active" }
+function Gateway-TaskExists { Quiet { schtasks /Query /TN "JARVIS-Gateway" 2>$null | Out-Null }; $LASTEXITCODE -eq 0 }
 function Gateway-Start {
-    if (Gateway-TaskExists) { schtasks /Run /TN "JARVIS-Gateway" 2>$null | Out-Null }
+    if (Gateway-TaskExists) { Quiet { schtasks /Run /TN "JARVIS-Gateway" 2>$null | Out-Null } }
     else { Start-Process -FilePath "hermes" -ArgumentList @("gateway", "start") -WindowStyle Hidden }
 }
 function Gateway-Stop {
     if (Gateway-TaskExists) {
-        schtasks /End /TN "JARVIS-Gateway" 2>$null | Out-Null
+        Quiet { schtasks /End /TN "JARVIS-Gateway" 2>$null | Out-Null }
         Say "gateway остановлен (задача Планировщика завершена до следующего запуска)"
-    } else { & hermes gateway stop }
+    } else { Quiet { & hermes gateway stop } }
 }
 
 # ─────────────────────────────── usage ──────────────────────────────────
@@ -153,6 +171,8 @@ J.A.R.V.I.S. on Hermes Agent (Windows)
   jarvis usage [-by-model|-by-platform|-by-day|-since ...|-json]   сколько токенов/денег потрачено (локально, из state.db)
   jarvis config          открыть config.yaml Hermes в редакторе
   jarvis logs            хвост логов агента и HUD
+  jarvis uninstall [--purge] [--yes]   остановить всё, удалить задачи Планировщика, команду jarvis и
+                         %HERMES_HOME% целиком (--purge — вместе с самим Hermes Agent, иначе только JARVIS)
 "@ | Write-Host
 }
 
@@ -192,7 +212,7 @@ switch ($Command) {
         Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
             Where-Object { $_.CommandLine -match "SpeechSynthesizer" } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-        curl.exe -s -X POST -H "Content-Type: application/json" -d "{}" "http://127.0.0.1:$HudPort/api/hush" 2>$null | Out-Null
+        Quiet { curl.exe -s -X POST -H "Content-Type: application/json" -d "{}" "http://127.0.0.1:$HudPort/api/hush" 2>$null | Out-Null }
         Say "тихо"
         break
     }
@@ -209,7 +229,7 @@ switch ($Command) {
             "stop" { Hud-Stop; break }
             { $_ -in @("log", "logs") } { Get-Content $HudLog -Tail 60 -Wait; break }
             "restart" {
-                if (Hud-TaskExists) { schtasks /End /TN "JARVIS-HUD" 2>$null | Out-Null; schtasks /Run /TN "JARVIS-HUD" 2>$null | Out-Null; Say "HUD перезапущен (задача Планировщика)" }
+                if (Hud-TaskExists) { Quiet { schtasks /End /TN "JARVIS-HUD" 2>$null | Out-Null; schtasks /Run /TN "JARVIS-HUD" 2>$null | Out-Null }; Say "HUD перезапущен (задача Планировщика)" }
                 else { Hud-Stop; Hud-Start }
                 break
             }
@@ -235,24 +255,24 @@ switch ($Command) {
     }
     "status" {
         Write-Host "J.A.R.V.I.S. status" -ForegroundColor Cyan
-        $hv = (& hermes --version 2>$null | Select-Object -First 1); if (-not $hv) { $hv = "not found" }
+        $hv = (Quiet { & hermes --version 2>$null } | Select-Object -First 1); if (-not $hv) { $hv = "not found" }
         Write-Host "  hermes      : $hv"
-        $model = (& hermes config get model 2>$null); if (-not $model) { $model = "—" }
+        $model = (Quiet { & hermes config get model 2>$null }); if (-not $model) { $model = "—" }
         Write-Host "  model       : $model"
         Write-Host "  gateway     : $(if (Gateway-Running) {'running'} else {'stopped'})"
-        $api = try { curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8642/health 2>$null } catch { "down" }
+        $api = try { Quiet { curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8642/health 2>$null } } catch { "down" }
         Write-Host "  api :8642   : $api"
         Write-Host "  hud  :$HudPort  : $(if (Hud-Running) {'running'} else {'stopped'})"
-        $plCount = ((& hermes plugins list 2>$null) | Select-String -Pattern "jarvis" -AllMatches).Matches.Count
+        $plCount = ((Quiet { & hermes plugins list 2>$null }) | Select-String -Pattern "jarvis" -AllMatches).Matches.Count
         Write-Host "  plugins     : $plCount/3 jarvis-*"
-        $wake = (& hermes config get wake_word.enabled 2>$null); if (-not $wake) { $wake = "—" }
+        $wake = (Quiet { & hermes config get wake_word.enabled 2>$null }); if (-not $wake) { $wake = "—" }
         Write-Host "  wake word   : $wake"
-        $stt = (& hermes config get stt.provider 2>$null); if (-not $stt) { $stt = "—" }
-        $tts = (& hermes config get tts.provider 2>$null); if (-not $tts) { $tts = "—" }
+        $stt = (Quiet { & hermes config get stt.provider 2>$null }); if (-not $stt) { $stt = "—" }
+        $tts = (Quiet { & hermes config get tts.provider 2>$null }); if (-not $tts) { $tts = "—" }
         Write-Host "  stt/tts     : $stt / $tts"
-        $taskCount = (schtasks /Query /FO LIST 2>$null | Select-String -Pattern "JARVIS-").Count
+        $taskCount = (Quiet { schtasks /Query /FO LIST 2>$null } | Select-String -Pattern "JARVIS-").Count
         Write-Host "  автозапуск  : $taskCount задач(и) в Планировщике"
-        $ver = (& $Py (Join-Path $JarvisHome "update.py") status 2>$null | Select-Object -First 1); if (-not $ver) { $ver = "—" }
+        $ver = (Quiet { & $Py (Join-Path $JarvisHome "update.py") status 2>$null } | Select-Object -First 1); if (-not $ver) { $ver = "—" }
         Write-Host "  version     : $ver"
         break
     }
@@ -364,7 +384,7 @@ switch ($Command) {
     { $_ -in @("version", "--version", "-v") } {
         $ver = Get-Content (Join-Path $JarvisHome "VERSION") -ErrorAction SilentlyContinue
         if (-not $ver) { $ver = "?" }
-        $hv = (& hermes --version 2>$null | Select-Object -First 1); if (-not $hv) { $hv = "?" }
+        $hv = (Quiet { & hermes --version 2>$null } | Select-Object -First 1); if (-not $hv) { $hv = "?" }
         Write-Host "JARVIS $ver · Hermes $hv"
         break
     }
@@ -431,6 +451,58 @@ switch ($Command) {
         break
     }
     "config" { & hermes config edit; break }
+    "uninstall" {
+        $purge = $Rest -contains "--purge"
+        $skipConfirm = $Rest -contains "--yes" -or $Rest -contains "-y"
+        Write-Host ""
+        Write-Host "Это удалит:" -ForegroundColor Yellow
+        Write-Host "  • задачи Планировщика JARVIS-HUD/JARVIS-Gateway/JARVIS-Updater/JARVIS-App"
+        Write-Host "  • команду jarvis (jarvis.ps1/jarvis.cmd) и её PATH-запись"
+        Write-Host "  • $HermesHome целиком — плагины, HUD, база знаний (BRAIN), настройки, логи, бэкапы"
+        if ($purge) { Write-Host "  • сам Hermes Agent (--purge): $HermesHome\hermes-agent" }
+        else { Write-Host "  (Hermes Agent НЕ трогается — только уберите -HermesHome вручную для полного сброса; используйте --purge, чтобы удалить и его)" }
+        Write-Host ""
+        if (-not $skipConfirm) {
+            $ans = Read-Host "Подтвердите удаление, набрав ПОЛНОСТЬЮ 'да'"
+            if ($ans -ne "да") { Write-Host "Отменено."; break }
+        }
+        Say "Останавливаю сервисы…"
+        Quiet { schtasks /End /TN "JARVIS-HUD" 2>$null | Out-Null }
+        Quiet { schtasks /End /TN "JARVIS-Gateway" 2>$null | Out-Null }
+        Quiet { schtasks /End /TN "JARVIS-App" 2>$null | Out-Null }
+        Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match "hud[\\/]server\.py|jarvis_tray\.pyw" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Say "Удаляю задачи Планировщика…"
+        foreach ($t in @("JARVIS-HUD", "JARVIS-Gateway", "JARVIS-Updater", "JARVIS-App")) {
+            Quiet { schtasks /Delete /TN $t /F 2>$null | Out-Null }
+        }
+        Say "Убираю cron-задачи Hermes (брифинг/heartbeat)…"
+        foreach ($name in @("JARVIS: утренний брифинг", "JARVIS: вечерний итог", "JARVIS: ночная ревизия базы знаний",
+                            "JARVIS: синхронизация памяти", "JARVIS: heartbeat")) {
+            Quiet { & hermes cron remove --name $name 2>$null | Out-Null }
+        }
+        if ($purge) {
+            Say "Удаляю $HermesHome целиком (--purge, включая Hermes Agent)…"
+            Remove-Item -Recurse -Force $HermesHome -ErrorAction SilentlyContinue
+        } else {
+            Say "Удаляю плагины/HUD/скиллы/настройки JARVIS (оставляю $HermesHome\hermes-agent)…"
+            foreach ($rel in @("plugins\jarvis-core", "plugins\jarvis-windows", "plugins\jarvis-brain",
+                               "skills\jarvis", "hooks\jarvis-boot", "jarvis", "skill-bundles\jarvis.yaml",
+                               "bin\jarvis.ps1", "bin\jarvis.cmd")) {
+                Remove-Item -Recurse -Force (Join-Path $HermesHome $rel) -ErrorAction SilentlyContinue
+            }
+        }
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        if ($userPath -like "*$BinDir*") {
+            [Environment]::SetEnvironmentVariable("Path", (($userPath -split ";" | Where-Object { $_ -ne $BinDir }) -join ";"), "User")
+        }
+        Write-Host ""
+        Say "JARVIS удалён."
+        if (-not $purge) { Write-Host "Hermes Agent остался в $HermesHome\hermes-agent — переустановка: install.ps1" }
+        Write-Host "Чтобы поставить заново: скачайте свежий архив/репозиторий и запустите install.ps1"
+        break
+    }
     "logs" {
         $agentLog = Join-Path $HermesHome "logs\agent.log"
         if (Test-Path $agentLog) { Get-Content $agentLog -Tail 40 }

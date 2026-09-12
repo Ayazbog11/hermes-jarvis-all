@@ -112,6 +112,8 @@ J.A.R.V.I.S. on Hermes Agent
   jarvis usage [--by-model|--by-platform|--by-day|--since ...|--json]   сколько токенов/денег потрачено (локально, из state.db)
   jarvis config          открыть config.yaml Hermes в редакторе
   jarvis logs            хвост логов агента и HUD
+  jarvis uninstall [--purge] [--yes]   остановить всё, удалить автозапуск, команду jarvis и
+                         \$HERMES_HOME целиком (--purge — вместе с самим Hermes Agent, иначе только JARVIS)
 EOF
 }
 
@@ -278,6 +280,53 @@ case "$cmd" in
     [[ -f "$USAGE_PY" ]] || fail "usage_report.py не установлен ($INSTALL_HINT)"
     exec "$PY" "$USAGE_PY" "$@" ;;
   config)    exec hermes config edit ;;
+  uninstall)
+    purge=0; skip_confirm=0
+    for a in "$@"; do [[ "$a" == "--purge" ]] && purge=1; [[ "$a" == "--yes" || "$a" == "-y" ]] && skip_confirm=1; done
+    echo ""
+    echo "Это удалит:"
+    echo "  • автозапуск JARVIS (launchd-агенты/systemd-юниты)"
+    echo "  • команду jarvis (~/.local/bin/jarvis)"
+    echo "  • $HERMES_HOME целиком — плагины, HUD, база знаний (BRAIN), настройки, логи, бэкапы"
+    if [[ $purge -eq 1 ]]; then echo "  • сам Hermes Agent (--purge)"
+    else echo "  (Hermes Agent сам по себе НЕ трогается — используйте --purge, чтобы удалить и его)"; fi
+    echo ""
+    if [[ $skip_confirm -ne 1 ]]; then
+      read -r -p "Подтвердите удаление, набрав ПОЛНОСТЬЮ 'да': " ans
+      [[ "$ans" == "да" ]] || { echo "Отменено."; exit 0; }
+    fi
+    say "Останавливаю сервисы…"
+    if [[ $IS_MAC -eq 1 ]]; then
+      for label in ai.jarvis.hud ai.jarvis.gateway ai.jarvis.app ai.jarvis.updater; do
+        launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1 || true
+        rm -f "$HOME/Library/LaunchAgents/$label.plist"
+      done
+    elif [[ $IS_LINUX -eq 1 ]] && command -v systemctl >/dev/null 2>&1; then
+      for unit in jarvis-hud.service jarvis-gateway.service jarvis-app.service jarvis-updater.timer jarvis-updater.service; do
+        systemctl --user disable --now "$unit" >/dev/null 2>&1 || true
+        rm -f "$HOME/.config/systemd/user/$unit"
+      done
+      systemctl --user daemon-reload >/dev/null 2>&1 || true
+    fi
+    say "Убираю cron-задачи Hermes (брифинг/heartbeat)…"
+    for name in "JARVIS: утренний брифинг" "JARVIS: вечерний итог" "JARVIS: ночная ревизия базы знаний" \
+                "JARVIS: синхронизация памяти" "JARVIS: heartbeat"; do
+      hermes cron remove --name "$name" >/dev/null 2>&1 || true
+    done
+    if [[ $purge -eq 1 ]]; then
+      say "Удаляю $HERMES_HOME целиком (--purge, включая Hermes Agent)…"
+      rm -rf "$HERMES_HOME"
+    else
+      say "Удаляю плагины/HUD/скиллы/настройки JARVIS (оставляю Hermes Agent)…"
+      rm -rf "$HERMES_HOME/plugins/jarvis-core" "$HERMES_HOME/plugins/jarvis-macos" "$HERMES_HOME/plugins/jarvis-linux" \
+             "$HERMES_HOME/plugins/jarvis-brain" "$HERMES_HOME/skills/jarvis" "$HERMES_HOME/hooks/jarvis-boot" \
+             "$HERMES_HOME/jarvis" "$HERMES_HOME/skill-bundles/jarvis.yaml"
+    fi
+    rm -f "$HOME/.local/bin/jarvis"
+    echo ""
+    say "JARVIS удалён."
+    if [[ $purge -ne 1 ]]; then echo "Hermes Agent остался нетронутым — переустановка: $INSTALL_HINT"; fi
+    echo "Чтобы поставить заново: скачайте свежий архив/репозиторий и запустите $INSTALL_HINT" ;;
   logs)      tail -n 40 "$HERMES_HOME/logs/agent.log" "$HUD_LOG" 2>/dev/null; hermes logs --follow 2>/dev/null || true ;;
   -h|--help|help) usage ;;
   *)         exec hermes "$cmd" "$@" ;;   # всё остальное — прозрачно в hermes

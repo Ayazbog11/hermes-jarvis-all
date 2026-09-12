@@ -168,7 +168,43 @@ def apply_profile(name: str, timeout: float = 20.0) -> dict:
 
 
 def _hermes_bin() -> str | None:
-    return shutil.which("hermes")
+    """Найти исполняемый файл `hermes`.
+
+    Сначала пробуем PATH (быстрый путь, обычно работает). Если `shutil.which`
+    не находит — это НЕ обязательно значит, что Hermes не установлен: HUD-сервер
+    на Windows часто запускается из Scheduled Task при входе в систему, а
+    `[Environment]::SetEnvironmentVariable(..., "User")` из install.ps1 подхватывается
+    только НОВЫМИ процессами — уже запущенный при логине HUD может унаследовать
+    устаревший PATH без $HERMES_HOME\\...\\bin. То же самое случается и после
+    самообновления Hermes через Desktop UI (см. апстрим-issue NousResearch/hermes-agent
+    #91563 — обновление иногда удаляет hermes-agent/bin, оставляя PATH указывающим
+    в никуда) — итог одинаков: `shutil.which("hermes")` возвращает None, хотя
+    Hermes реально установлен, и HUD-кнопка смены модели молча перестаёт работать.
+    Поэтому при провале PATH дополнительно проверяем известные места, куда
+    install.ps1/install.sh кладут бинарник, напрямую по $HERMES_HOME.
+    """
+    found = shutil.which("hermes")
+    if found:
+        return found
+    home = _hermes_home()
+    candidates = (
+        [
+            home / "hermes-agent" / "bin" / "hermes.exe",
+            home / "hermes-agent" / "venv" / "Scripts" / "hermes.exe",
+            home / "bin" / "hermes.exe",
+            home / "bin" / "hermes.cmd",
+        ]
+        if os.name == "nt"
+        else [
+            home / "hermes-agent" / "bin" / "hermes",
+            home / "hermes-agent" / "venv" / "bin" / "hermes",
+            Path.home() / ".local" / "bin" / "hermes",
+        ]
+    )
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return None
 
 
 def is_available() -> bool:

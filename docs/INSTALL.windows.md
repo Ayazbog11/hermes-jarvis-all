@@ -78,15 +78,16 @@ jarvis perms      # откроет нужные разделы «Парамет�
 | **Уведомления** | `win_notify`, тосты об обновлениях |
 | **Тихий час / Focus Assist** | Windows не даёт публичного API для чтения/переключения — переключается вручную (`ms-settings:quiethours`), `win_focus` честно об этом сообщает |
 | **Веб-камера** | `win_camera_snap` (опционально, нужен ffmpeg) |
-| **Outlook** (опционально) | только для `win_contacts` и fallback-`win_calendar` — должен быть установлен и настроен профиль по умолчанию (JARVIS обращается к нему через COM). Основной календарь — Google Calendar, см. ниже, Outlook не нужен |
 
 Если запускаете через Планировщик заданий (gateway/HUD в фоне) — им отдельные разрешения обычно не нужны,
 но если что-то не работает именно в фоне (а из интерактивного PowerShell работает) — см. `docs/TROUBLESHOOTING.md`.
 
 ## 5а. Календарь (Google Calendar, один раз для всех трёх ОС)
 
-JARVIS использует Google Calendar как основной календарь на macOS/Windows/Linux — не нужен Outlook
-или другое ПО, работает одним и тем же кодом везде:
+JARVIS использует Google Calendar как единственный календарь на macOS/Windows/Linux — интеграция
+с Outlook (COM) удалена полностью: она открывала мастер регистрации/окно первого запуска Outlook
+при каждом обращении без настроенного профиля, что было навязчиво и не нужно большинству. Google
+Calendar работает одним и тем же кодом везде:
 
 ```powershell
 jarvis calendar setup      # один раз: создать OAuth client в Google Cloud Console (инструкция выведется), войти через браузер
@@ -158,7 +159,7 @@ tts:
 |---|---|---|---|
 | Управление приложениями/окнами/громкостью/яркостью/Wi-Fi/BT | ✅ `mac_*` | ✅ `win_*` | 1:1 |
 | Скриншоты, буфер обмена, набор текста, хоткеи | ✅ | ✅ | 1:1 |
-| Календарь/контакты | ✅ Calendar.app/Contacts.app (Automation) | ✅ Outlook (COM), если установлен | На Windows без Outlook вернёт понятную ошибку вместо краша |
+| Календарь | ✅ Google Calendar (`jarvis_calendar`) | ✅ Google Calendar (`jarvis_calendar`) | 1:1 — Outlook (COM) убран полностью, см. ниже |
 | Заметки | ✅ Notes.app | ✅ файлы `.md` в `jarvis\notes` | Проще, но кроссплатформенно |
 | Focus/Не беспокоить | ✅ get+set через `defaults`/shortcuts | ⚠️ только заглушка `get`; `set` — нет публичного API | Задокументированное ограничение Windows, не баг |
 | Скрипты-автоматизации | ✅ Shortcuts.app (Siri) | ✅ `.ps1`/`.bat` через `win_shortcut` + ярлыки на Рабочем столе/SendTo | `jarvis shortcuts` генерирует их |

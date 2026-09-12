@@ -1,5 +1,64 @@
 # Changelog
 
+## 2.1.0 — Убран Outlook (всплывающие окна), починен PowerShell-баг ломавший gateway/HUD/автообновление, не работавшая смена модели в HUD, кнопка обновления и сворачиваемые виджеты в HUD, `jarvis uninstall`
+
+Пользователь сообщил о нескольких проблемах разом: (1) `jarvis gateway` падал с ошибкой `NativeCommandError`
+на `schtasks`; (2) окно регистрации Outlook всплывало каждые пару минут само по себе; (3) в HUD
+нет кнопки обновления, и боковые панели с виджетами нельзя ни прокрутить, ни скрыть лишнее; (4) в HUD
+нельзя поменять модель ИИ; заодно попросил команду для полного удаления + переустановки.
+
+- **Критический баг PowerShell 5.1, ломавший `jarvis gateway`/`jarvis hud`/автообновление**
+  (`bin/jarvis.ps1`, `install.ps1`, `scripts/setup_cron.ps1`) — при `$ErrorActionPreference = "Stop"`
+  Windows PowerShell 5.1 (в отличие от pwsh 7+) считает **любой** байт, написанный внешней программой
+  (`schtasks.exe`, `winget.exe`, `hermes.exe`…) в stderr, **завершающей скрипт ошибкой**, даже если он
+  тут же отбрасывается через `2>$null`/`2>&1` — это давний баг самого PowerShell
+  ([PowerShell/PowerShell#3996](https://github.com/PowerShell/PowerShell/issues/3996)), исправленный
+  только в pwsh 7.2+ и то не по умолчанию. `jarvis gateway` (и множество других команд) падали на
+  первом же вызове `schtasks /Query` для ещё не созданной задачи — обычная, ожидаемая ситуация.
+  Добавлена функция-обёртка `Quiet { ... }`, временно снижающая `ErrorActionPreference` только на
+  время вызова внешней программы и гарантированно восстанавливающая его сразу после (даже при
+  исключении) — применена ко всем вызовам `schtasks`/`winget`/`hermes`/`curl.exe`/`uv` с `2>`.
+- **Полностью убрана интеграция с Outlook (COM)** — `win_calendar`/`win_contacts`
+  (`plugins/jarvis-windows/tools.py`, `schemas.py`, `plugin.yaml`) и Outlook-фоллбэк календаря в
+  HUD (`hud/sysinfo.py`) и watchdog (`plugins/jarvis-core/platform_compat.py::upcoming_events`).
+  Причина: первое обращение к `New-Object -ComObject Outlook.Application` без настроенного профиля
+  Outlook открывает мастер регистрации/окно первого запуска — а HUD дёргал этот код каждые
+  несколько минут (`Collector.refresh`, безусловно, для виджета «Сегодня»), из-за чего окно
+  всплывало заново и заново без единого действия пользователя. Единственный календарь JARVIS теперь
+  — кроссплатформенный Google Calendar (`jarvis_calendar`, `jarvis calendar setup`); HUD «Сегодня» на
+  Windows тоже переключён на него (`hud/sysinfo.py::_calendar_today_gcal`).
+- **HUD: прямая кнопка обновления** — новые эндпоинты `GET /api/update`, `POST
+  /api/update/check|apply|rollback` (`hud/server.py`), запускающие `update.py` напрямую (apply/rollback
+  — в фоновом потоке с прогрессом через SSE-событие `update.progress`). Раньше кнопка «Обновление»
+  в шапке лишь отправляла текст в чат («Обнови JARVIS…») в расчёте на то, что модель сама вызовет
+  инструмент `jarvis_update` — теперь это явный REST-вызов; также строка «Доступно обновление» с
+  кнопкой добавлена в виджет «Система».
+- **HUD: сворачиваемые/скроллируемые боковые панели** — колонки виджетов (`#colL`/`#colR`) теперь
+  сами скроллятся, если высота виджетов превышает экран (раньше `overflow:hidden` просто обрезал
+  лишнее без возможности прокрутки). Новая кнопка «Виджеты» (иконка сетки) в шапке открывает список
+  чекбоксов — какие карточки показывать; выбор сохраняется в `localStorage`, переживает перезагрузку.
+- **`jarvis uninstall [--purge] [--yes]`** (`bin/jarvis.ps1`, `bin/jarvis`) — по запросу («сделай
+  чтоб я мог полностью удалить и заново скачать»): останавливает все сервисы/автозапуск (Планировщик
+  заданий на Windows, launchd/systemd на macOS/Linux), убирает cron-задачи Hermes, удаляет команду
+  `jarvis` и весь `$HERMES_HOME` (без `--purge` — только плагины/HUD/скиллы/настройки JARVIS,
+  сохраняя сам установленный Hermes Agent; с `--purge` — вместе с ним). Требует явного подтверждения
+  (`да`) если не передан `--yes`.
+- **Починена не работавшая смена модели ИИ в HUD** — `scripts/model_switch.py` и
+  `plugins/jarvis-core/messenger.py` искали бинарник `hermes` только через `shutil.which("hermes")`
+  (чистый PATH). На Windows это ненадёжно сразу по двум причинам: (a) HUD/gateway обычно запускаются
+  из Планировщика заданий при входе в систему и могут унаследовать PATH, записанный ДО того, как
+  `install.ps1` дописал в него `bin`-каталог Hermes (`[Environment]::SetEnvironmentVariable(...,
+  "User")` подхватывают только новые процессы, а не уже запущенные); (b) самообновление Hermes через
+  Desktop UI иногда удаляет `hermes-agent/bin`, не трогая PATH (известный апстрим-баг
+  [NousResearch/hermes-agent#91563](https://github.com/NousResearch/hermes-agent/issues/91563)).
+  В обоих случаях `hermes` физически установлен, но `shutil.which` возвращает `None`, и кнопки HUD
+  («Сохранить модель», «Отправить сообщение» и т.д.) молча ничего не делают. `_hermes_bin()` в обоих
+  модулях теперь при провале PATH дополнительно проверяет типовые пути установки напрямую под
+  `$HERMES_HOME` (`hermes-agent/bin`, `hermes-agent/venv/Scripts` или `venv/bin`, `bin/hermes(.exe|.cmd)`).
+- Новый регрессионный тест `tests/test_release_audit.py::test_ps1_scripts_have_utf8_bom` (из 2.0.1),
+  6 новых тестов на эндпоинты `/api/update*` и 3 новых теста на PATH-фоллбэк `_hermes_bin()`
+  в `tests/test_hud_and_scripts.py`, `tests/test_model_profiles.py`, `tests/test_messenger.py`.
+
 ## 2.0.1 — Исправлен install.ps1: потерян BOM, установщик не запускался на Windows PowerShell 5.1
 
 Пользователь сообщил, что `install.ps1` из релиза 2.0.0 падал с каскадом ошибок парсера

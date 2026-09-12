@@ -145,3 +145,27 @@ def test_apply_profile_reports_partial_failure(monkeypatch, tmp_path):
     assert result["success"] is False
     assert result["results"]["model.provider"]["success"] is True
     assert result["results"]["model.default"]["success"] is False
+
+
+def test_hermes_bin_falls_back_to_hermes_agent_bin_when_path_stale(monkeypatch, tmp_path):
+    """shutil.which() может не находить `hermes`, даже если он реально установлен: PATH,
+    унаследованный HUD-процессом (Scheduled Task при логине), может быть записан ДО того,
+    как install.ps1 дописал в него bin-каталог Hermes, либо самообновление Hermes через
+    Desktop UI удалило hermes-agent/bin, не тронув PATH (см. апстрим NousResearch/hermes-agent
+    #91563). `_hermes_bin()` должен в этом случае проверить типовые install-пути напрямую
+    под $HERMES_HOME, а не молча сдаться.
+    """
+    m = load(monkeypatch, tmp_path)
+    monkeypatch.setattr(m.shutil, "which", lambda name: None)
+    bin_dir = tmp_path / "hermes-agent" / "bin"
+    bin_dir.mkdir(parents=True)
+    exe_name = "hermes.exe" if m.os.name == "nt" else "hermes"
+    fake_hermes = bin_dir / exe_name
+    fake_hermes.write_text("fake")
+    assert m._hermes_bin() == str(fake_hermes)
+
+
+def test_hermes_bin_returns_none_when_nothing_found(monkeypatch, tmp_path):
+    m = load(monkeypatch, tmp_path)
+    monkeypatch.setattr(m.shutil, "which", lambda name: None)
+    assert m._hermes_bin() is None

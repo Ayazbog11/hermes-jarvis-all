@@ -76,6 +76,16 @@ function AskYN([string]$question) {
     return ($a -eq "" -or $a -match "^[YyДд]")
 }
 
+# Windows PowerShell 5.1 считает любой байт, написанный внешней программой (winget, hermes,
+# uv…) в stderr, ошибкой потока ошибок PowerShell — при $ErrorActionPreference = "Stop" (см.
+# выше) это ЗАВЕРШАЕТ весь install.ps1, даже если вывод сразу отбрасывается через "2>$null"
+# (https://github.com/PowerShell/PowerShell/issues/3996). Оборачиваем такие вызовы в Quiet.
+function Quiet([scriptblock]$Block) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try { & $Block } finally { $ErrorActionPreference = $prevEap }
+}
+
 Write-Host @"
 
      ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗
@@ -105,11 +115,11 @@ if ($NoExtraTools) {
     Step "Системные зависимости (winget)"
     $pkgs = @("Gyan.FFmpeg")
     foreach ($p in $pkgs) {
-        $installed = winget list --id $p -e 2>$null | Select-String $p
+        $installed = Quiet { winget list --id $p -e 2>$null } | Select-String $p
         if ($installed) { Ok $p }
         else {
             Write-Host "  … устанавливаю $p" -ForegroundColor DarkGray
-            winget install --id $p -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
+            Quiet { winget install --id $p -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null }
             if ($LASTEXITCODE -eq 0) { Ok $p } else { WarnMsg "не удалось установить $p (не критично, можно вручную)" }
         }
     }
@@ -139,7 +149,7 @@ if ($hermesCmd) {
 $hermesCmd = Get-Command hermes -ErrorAction SilentlyContinue
 if (-not $hermesCmd) { Die "Команда hermes недоступна. Откройте новое окно PowerShell и запустите install.ps1 снова." }
 if (-not (Test-Path $HermesHome)) { Die "Не найден каталог Hermes: $HermesHome" }
-$hv = (& hermes --version 2>$null | Select-Object -First 1)
+$hv = (Quiet { & hermes --version 2>$null } | Select-Object -First 1)
 Ok "hermes $hv"
 
 # venv/интерпретатор Hermes (для pip-extras и запуска наших скриптов).
@@ -170,7 +180,7 @@ Ok "python: $VenvPy"
 function Invoke-Pip([string[]]$pipArgs) {
     if ($VenvDir -and (Get-Command uv -ErrorAction SilentlyContinue)) {
         $env:VIRTUAL_ENV = $VenvDir
-        & uv pip install -q @pipArgs 2>$null
+        Quiet { & uv pip install -q @pipArgs 2>$null }
     } else {
         & $VenvPy -m pip install -q @pipArgs
     }
@@ -401,12 +411,12 @@ if ($Quiet) { Write-Host "JARVIS $JarvisVersion установлен (тихий
 # ─── 11. модель ─────────────────────────────────────────────────────────────
 
 Step "Провайдер LLM"
-$model = (& hermes config get model 2>$null)
+$model = (Quiet { & hermes config get model 2>$null })
 if ($model -and $model.Trim()) {
     Ok "модель: $model"
     Write-Host "  … проверяю, что модель отвечает" -ForegroundColor DarkGray
     $ping = ""
-    $job = Start-Job { & hermes chat -q "Ответь одним словом: ok" 2>&1 }
+    $job = Start-Job { $ErrorActionPreference = "SilentlyContinue"; & hermes chat -q "Ответь одним словом: ok" 2>&1 }
     if (Wait-Job $job -Timeout 90) { $ping = (Receive-Job $job | Out-String) } else { Stop-Job $job }
     Remove-Job $job -Force -ErrorAction SilentlyContinue
     $ping = $ping.Trim()
@@ -422,14 +432,14 @@ if ($model -and $model.Trim()) {
 # ─── 12. доктор ──────────────────────────────────────────────────────────────
 
 Step "Диагностика"
-$pluginsList = (& hermes plugins list 2>$null | Out-String)
+$pluginsList = (Quiet { & hermes plugins list 2>$null } | Out-String)
 if ($pluginsList -notmatch "(?i)jarvis-core") {
-    & hermes plugins enable jarvis-core jarvis-windows jarvis-brain 2>$null | Out-Null
+    Quiet { & hermes plugins enable jarvis-core jarvis-windows jarvis-brain 2>$null | Out-Null }
     if ($LASTEXITCODE -eq 0) { Ok "плагины включены" }
     else { WarnMsg "плагины не отображаются — выполните: hermes plugins enable jarvis-core jarvis-windows jarvis-brain" }
 }
-& hermes plugins list 2>$null | Select-String -Pattern "jarvis" | Write-Host
-& $VenvPy (Join-Path $JarvisHomeDir "doctor.py") --quick --fix 2>$null | Out-Null
+Quiet { & hermes plugins list 2>$null } | Select-String -Pattern "jarvis" | Write-Host
+Quiet { & $VenvPy (Join-Path $JarvisHomeDir "doctor.py") --quick --fix 2>$null | Out-Null }
 
 # ─── итог ────────────────────────────────────────────────────────────────────
 
