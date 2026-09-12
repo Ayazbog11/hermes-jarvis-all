@@ -426,33 +426,82 @@ if ($Quiet) { Write-Host "JARVIS $JarvisVersion установлен (тихий
 # если пользователь пока не добавил свой ключ платного провайдера).
 $JarvisDefaultModel = "upstage/solar-pro4:free"
 
-Step "Провайдер LLM"
-$model = (Quiet { & hermes config get model 2>$null })
-if ($model -and $model.Trim()) {
-    Ok "модель: $model"
-    Write-Host "  … проверяю, что модель отвечает" -ForegroundColor DarkGray
+# Проверить, что модель РЕАЛЬНО отвечает (не только что hermes config get её знает) —
+# `hermes chat -q` в фоновом Job с таймаутом, т.к. может зависнуть на сетевом запросе.
+# Общая функция: раньше эта проверка была только в ветке "модель уже настроена" — ветка
+# "настраиваем по умолчанию" считала успехом само наличие имени модели в конфиге, не
+# проверяя, что провайдер реально дошёл до ответа. Из-за этого пропускалась ситуация,
+# когда model.provider не применился (остался nous/другой, если и до install.ps1 уже была
+# активна Nous Portal сессия из предыдущей установки) — hermes формально знал имя модели
+# "upstage/solar-pro4:free", но гонял запросы через провайдера nous
+# (inference-api.nousresearch.com), а не через openrouter.ai, и падал с ошибкой на стороне
+# nous (напр. Cloudflare 403 "Attention Required") при каждом обращении — JARVIS никогда не
+# отвечал, при этом install.ps1 печатал "✔ модель по умолчанию" как будто всё в порядке.
+function Test-ModelPing {
     $ping = ""
     $job = Start-Job { $ErrorActionPreference = "SilentlyContinue"; & hermes chat -q "Ответь одним словом: ok" 2>&1 }
     if (Wait-Job $job -Timeout 90) { $ping = (Receive-Job $job | Out-String) } else { Stop-Job $job }
     Remove-Job $job -Force -ErrorAction SilentlyContinue
     $ping = $ping.Trim()
-    if (-not $ping -or $ping -match "error code|http [45]\d\d|traceback|\b(401|403|405|429)\b") {
-        WarnMsg "модель настроена, но НЕ отвечает: $(if ($ping) { $ping.Substring(0, [Math]::Min(400, $ping.Length)) } else { 'пустой ответ' })"
+    if (-not $ping -or $ping -match "error code|http [45]\d\d|traceback|attention required|cloudflare|permissiondeniederror|\b(401|403|405|429)\b") {
+        return @{ ok = $false; text = $ping }
+    }
+    return @{ ok = $true; text = $ping }
+}
+
+Step "Провайдер LLM"
+$model = (Quiet { & hermes config get model 2>$null })
+if ($model -and $model.Trim()) {
+    Ok "модель: $model"
+    Write-Host "  … проверяю, что модель отвечает" -ForegroundColor DarkGray
+    $r = Test-ModelPing
+    if (-not $r.ok) {
+        WarnMsg "модель настроена, но НЕ отвечает: $(if ($r.text) { $r.text.Substring(0, [Math]::Min(400, $r.text.Length)) } else { 'пустой ответ' })"
         if (-not $Yes -and (AskYN "Открыть мастер выбора модели сейчас (рекомендую OpenRouter или Ollama)?")) { & hermes model }
     } else { Ok "модель отвечает" }
 } else {
+    # OpenRouter требует ключ даже для бесплатных ":free" моделей (только не требует оплаты) —
+    # без него первый же запрос падает, а пользователь получает молчащего JARVIS без единой
+    # подсказки почему (см. Test-ModelPing ниже). Спрашиваем ключ один раз тут же, а не только
+    # постфактум после неудачного пинга — если пользователь уже держит ключ под рукой (типичная
+    # ситуация: только что зарегистрировался на openrouter.ai/keys по нашей же инструкции выше).
+    $hasOpenRouterKey = (Test-Path $envFile) -and ((Get-Content $envFile -ErrorAction SilentlyContinue) -match "^OPENROUTER_API_KEY=\S")
+    if (-not $hasOpenRouterKey -and -not $Yes) {
+        Write-Host "  Модель по умолчанию ($JarvisDefaultModel) идёт через OpenRouter — нужен бесплатный ключ." -ForegroundColor DarkGray
+        Write-Host "  Получить: https://openrouter.ai/keys (регистрация без карты, бесплатные модели без оплаты)." -ForegroundColor DarkGray
+        $orKey = Read-Host "  Вставьте ключ OpenRouter (Enter — пропустить и настроить позже)"
+        if ($orKey -and $orKey.Trim()) {
+            Quiet { & hermes config set OPENROUTER_API_KEY $orKey.Trim() 2>$null | Out-Null }
+            Ok "ключ OpenRouter сохранён"
+        }
+    }
     Quiet { & hermes config set model.provider openrouter 2>$null | Out-Null }
     Quiet { & hermes config set model $JarvisDefaultModel 2>$null | Out-Null }
     $model = (Quiet { & hermes config get model 2>$null })
-    if ($model -and $model.Trim() -eq $JarvisDefaultModel) {
-        Ok "модель по умолчанию: $JarvisDefaultModel (бесплатный тир OpenRouter)"
-        Write-Host "  Нужен свой ключ OpenRouter — задайте его: hermes config set OPENROUTER_API_KEY <ключ>" -ForegroundColor DarkGray
-        Write-Host "  Сменить модель в любой момент: hermes model" -ForegroundColor DarkGray
+    $provider = (Quiet { & hermes config get model.provider 2>$null })
+    if ($model -and $model.Trim() -eq $JarvisDefaultModel -and $provider -and $provider.Trim() -eq "openrouter") {
+        Write-Host "  … проверяю, что модель по умолчанию реально отвечает" -ForegroundColor DarkGray
+        $r = Test-ModelPing
+        if ($r.ok) {
+            Ok "модель по умолчанию: $JarvisDefaultModel (бесплатный тир OpenRouter)"
+            Write-Host "  Нужен свой ключ OpenRouter — задайте его: hermes config set OPENROUTER_API_KEY <ключ>" -ForegroundColor DarkGray
+            Write-Host "  Сменить модель в любой момент: hermes model" -ForegroundColor DarkGray
+        } else {
+            # Модель/провайдер прописались в config.yaml, но реального ответа нет — обычно
+            # значит, что нет OPENROUTER_API_KEY (бесплатный тир всё равно требует ключ
+            # OpenRouter, просто без оплаты) или сработал остаточный провайдер сессии
+            # (напр. Nous Portal с недоступным inference-api.nousresearch.com). Не считаем
+            # это тихим успехом — прямо просим пользователя задать ключ или открыть мастер.
+            WarnMsg "модель по умолчанию прописана ($JarvisDefaultModel через openrouter), но не отвечает: $(if ($r.text) { $r.text.Substring(0, [Math]::Min(300, $r.text.Length)) } else { 'пустой ответ' })"
+            Write-Host "  Обычная причина — нет ключа OpenRouter: hermes config set OPENROUTER_API_KEY <ключ> (получить: openrouter.ai/keys, бесплатно)" -ForegroundColor DarkGray
+            if (-not $Yes -and (AskYN "Открыть мастер выбора модели сейчас (рекомендую OpenRouter или Ollama)?")) { & hermes model }
+        }
     } else {
         WarnMsg "Не удалось выставить модель по умолчанию автоматически. Сейчас откроется мастер — выберите провайдера (OpenRouter / Anthropic / OpenAI / Nous Portal / Ollama)."
         if (-not $Yes) { & hermes model }
     }
 }
+
 
 # ─── 12. доктор ──────────────────────────────────────────────────────────────
 

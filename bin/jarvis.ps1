@@ -216,7 +216,7 @@ if ($Command -notin @("", "-h", "--help", "help", "version", "--version", "-v"))
 
 switch ($Command) {
     { $_ -in @("", "voice", "tui") } {
-        Say "JARVIS online. Скажите «Hey Jarvis» или нажмите Ctrl+B. /voice, /wake, /brief, /focus, /timer, /screen"
+        Say "JARVIS online. Скажите «Hey Jarvis» или нажмите Ctrl+B. /voice, /wake, /brief, /mode, /timer, /screen"
         & hermes --tui @Rest
         break
     }

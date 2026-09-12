@@ -8,7 +8,7 @@ jarvis-core — ядро J.A.R.V.I.S. поверх Hermes Agent.
                      (веб-интерфейс «арк-реактора») через HTTP-события;
   * инструменты    → jarvis_hud (панели на экране), jarvis_timer (таймеры/будильники),
                      jarvis_mode (режимы: focus / night / normal), jarvis_weather;
-  * slash-команды  → /brief (утренний брифинг), /focus, /timer.
+  * slash-команды  → /brief (утренний брифинг), /mode, /timer.
 
 Плагин не зависит от HUD: если сервер HUD не запущен, события просто отбрасываются.
 """
@@ -769,7 +769,7 @@ def register(ctx) -> None:
         except Exception:
             return BRIEF_PROMPT  # старые версии: просто вернуть текст подсказки
 
-    def cmd_focus(raw: str) -> str:
+    def cmd_mode(raw: str) -> str:
         mode = (raw.strip() or "focus").lower()
         return tool_jarvis_mode({"mode": "normal" if mode in ("off", "выкл") else mode})
 
@@ -788,7 +788,14 @@ def register(ctx) -> None:
 
     for name, fn, desc in (
         ("brief", cmd_brief, "Утренний брифинг JARVIS"),
-        ("focus", cmd_focus, "Режим фокуса: /focus | /focus off | /focus night"),
+        # ИМЕННО "mode", не "focus": начиная с версии Hermes, добавившей встроенную команду
+        # /focus (переключатель отображения "focus view", не имеющий отношения к режимам
+        # JARVIS), собственная slash-команда плагина /focus стала конфликтовать с ней. Hermes
+        # разрешает конфликт в пользу встроенной команды и тихо пропускает регистрацию нашей
+        # (лог: "Plugin 'jarvis-core' tried to register command '/focus' which conflicts with
+        # a built-in command. Skipping.") — переключение режима JARVIS (focus/night/normal)
+        # переставало работать через слэш-команду без единой видимой ошибки в чате.
+        ("mode", cmd_mode, "Режим JARVIS: /mode | /mode off | /mode night"),
         ("timer", cmd_timer, "Таймер: /timer 10 чай | /timer 07:30 подъём"),
     ):
         try:

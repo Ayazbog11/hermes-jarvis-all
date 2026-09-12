@@ -52,7 +52,7 @@
 | `/voice on\|off\|tts\|status` | Hermes | голосовой режим |
 | `/wake on\|off\|status` | Hermes | wake word «Hey Jarvis» |
 | `/brief` | jarvis-core | утренний/вечерний брифинг |
-| `/focus [off\|night\|presentation]` | jarvis-core | режимы |
+| `/mode [off\|focus\|night\|presentation]` | jarvis-core | режимы JARVIS (не путать со встроенной `/focus` Hermes — это переключатель отображения в CLI, к режимам JARVIS отношения не имеет) |
 | `/timer 10 чай` · `/timer 07:30 подъём` · `/timer` | jarvis-core | таймер / будильник / список |
 | `/remember <факт> #тег` | jarvis-brain | записать в базу знаний |
 | `/recall <тема>` | jarvis-brain | поиск по базе знаний |

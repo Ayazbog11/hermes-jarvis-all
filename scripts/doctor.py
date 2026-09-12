@@ -171,7 +171,12 @@ def check_model(fix: bool, do_ping: bool) -> Check:
     dt = time.time() - t0
     text = out.strip()
     low = text.lower()
-    if code != 0 or not text or any(k in low for k in ("error code", "http 4", "http 5", "traceback", "401", "403", "405", "429")):
+    # "attention required"/"cloudflare" ловит характерный блок Cloudflare (напр. у
+    # inference-api.nousresearch.com при перегрузке/бане IP) — без этих слов такой ответ уже
+    # покрывается "403"/"http 4", но явное совпадение даёт понятнее текст диагноза пользователю.
+    if code != 0 or not text or any(k in low for k in ("error code", "http 4", "http 5", "traceback",
+                                                         "401", "403", "405", "429",
+                                                         "attention required", "cloudflare", "permissiondeniederror")):
         return c.fail(f"{model} не отвечает: {text[-140:] or 'пустой ответ'}",
                       "hermes model → выберите рабочую модель; проверьте ключ провайдера и баланс")
     return c.ok(f"{model} отвечает ({dt:.1f} с)")

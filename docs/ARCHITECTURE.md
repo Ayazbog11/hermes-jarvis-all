@@ -81,7 +81,7 @@ brew-утилиты (`blueutil`, `imagesnap`, `brightness`).
 ### `plugins/jarvis-core`
 | Файл | Роль |
 |---|---|
-| `__init__.py` | хуки, инструменты `jarvis_hud/timer/mode/weather`, команды `/brief /focus /timer`, регистрация бандл-скиллов |
+| `__init__.py` | хуки, инструменты `jarvis_hud/timer/mode/weather`, команды `/brief /mode /timer`, регистрация бандл-скиллов |
 | `state.py` | JSON-состояние (режим, таймеры) в `~/.hermes/plugin-data/jarvis-core/`, потокобезопасно, переживает рестарты |
 | `hud_client.py` | неблокирующая очередь → HTTP POST на HUD; при недоступности HUD молчит 10 с |
 | `skills/*/SKILL.md` | процедуры для агента: брифинг, таблица выбора mac-инструментов |

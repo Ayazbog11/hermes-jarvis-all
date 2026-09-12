@@ -71,7 +71,7 @@ def test_core_register(ctx):
             "jarvis_send_message", "jarvis_voice_note", "jarvis_working_memory", "jarvis_telegram"} == set(ctx.tools)
     for hook in ("pre_llm_call", "post_llm_call", "pre_tool_call", "post_tool_call", "on_session_start"):
         assert hook in ctx.hooks
-    assert {"brief", "focus", "timer"} <= set(ctx.commands)
+    assert {"brief", "mode", "timer"} <= set(ctx.commands)
     assert {"morning-briefing", "mac-control"} <= set(ctx.skills)
     for p in ctx.skills.values():
         assert p.exists() and p.read_text(encoding="utf-8").startswith("---")

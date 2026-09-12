@@ -121,7 +121,7 @@ cmd="${1:-}"; [[ $# -gt 0 ]] && shift || true
 case "$cmd" in -h|--help|help|version|--version|-v) ;; *) [[ -d "$HERMES_HOME" ]] || fail "каталог HERMES_HOME не найден: $HERMES_HOME (переустановите: $INSTALL_HINT)" ;; esac
 case "$cmd" in
   ""|voice|tui)
-    say "JARVIS online. Скажите «Hey Jarvis» или нажмите Ctrl+B. /voice, /wake, /brief, /focus, /timer, /screen"
+    say "JARVIS online. Скажите «Hey Jarvis» или нажмите Ctrl+B. /voice, /wake, /brief, /mode, /timer, /screen"
     exec hermes --tui "$@" ;;
   chat)      exec hermes chat "$@" ;;
   hush|stop)
