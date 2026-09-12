@@ -178,9 +178,19 @@ if (-not (Test-Path $VenvPy)) {
 Ok "python: $VenvPy"
 
 function Invoke-Pip([string[]]$pipArgs) {
+    # ВАЖНО: указываем целевой интерпретатор ЯВНО через --python $VenvPy, а не полагаемся
+    # только на $env:VIRTUAL_ENV. uv ищет окружение по приоритету VIRTUAL_ENV → CONDA_PREFIX →
+    # .venv в текущей папке → python3 в PATH — если что-то в сессии PowerShell уже выставило
+    # один из этих env-переменных раньше (например, вложенный вызов install.ps1 из другого
+    # скрипта, или переменная осталась от предыдущего запуска в том же окне), пакет мог тихо
+    # уйти не в тот Python. Один из таких пакетов — telethon: install.ps1 печатает
+    # "✔ telethon установлен" (get-код=0), но HUD запускается через $VenvPy и, если telethon
+    # ушёл в другое окружение, `import telethon` в hud/server.py падает — HUD показывает
+    # "telethon не установлен", хотя лог установки говорит обратное. Явный --python убирает
+    # эту неоднозначность полностью, независимо от текущих переменных окружения.
     if ($VenvDir -and (Get-Command uv -ErrorAction SilentlyContinue)) {
         $env:VIRTUAL_ENV = $VenvDir
-        Quiet { & uv pip install -q @pipArgs 2>$null }
+        Quiet { & uv pip install -q --python $VenvPy @pipArgs 2>$null }
     } else {
         & $VenvPy -m pip install -q @pipArgs
     }
@@ -410,6 +420,12 @@ if ($Quiet) { Write-Host "JARVIS $JarvisVersion установлен (тихий
 
 # ─── 11. модель ─────────────────────────────────────────────────────────────
 
+# Модель по умолчанию для JARVIS, если пользователь ещё ничего не настроил —
+# upstage/solar-pro4:free через OpenRouter (бесплатный тир, работает без платной
+# подписки — важно для первого запуска, чтобы JARVIS отвечал "из коробки", даже
+# если пользователь пока не добавил свой ключ платного провайдера).
+$JarvisDefaultModel = "upstage/solar-pro4:free"
+
 Step "Провайдер LLM"
 $model = (Quiet { & hermes config get model 2>$null })
 if ($model -and $model.Trim()) {
@@ -425,8 +441,17 @@ if ($model -and $model.Trim()) {
         if (-not $Yes -and (AskYN "Открыть мастер выбора модели сейчас (рекомендую OpenRouter или Ollama)?")) { & hermes model }
     } else { Ok "модель отвечает" }
 } else {
-    WarnMsg "Модель не настроена. Сейчас откроется мастер — выберите провайдера (OpenRouter / Anthropic / OpenAI / Nous Portal / Ollama)."
-    if (-not $Yes) { & hermes model }
+    Quiet { & hermes config set model.provider openrouter 2>$null | Out-Null }
+    Quiet { & hermes config set model $JarvisDefaultModel 2>$null | Out-Null }
+    $model = (Quiet { & hermes config get model 2>$null })
+    if ($model -and $model.Trim() -eq $JarvisDefaultModel) {
+        Ok "модель по умолчанию: $JarvisDefaultModel (бесплатный тир OpenRouter)"
+        Write-Host "  Нужен свой ключ OpenRouter — задайте его: hermes config set OPENROUTER_API_KEY <ключ>" -ForegroundColor DarkGray
+        Write-Host "  Сменить модель в любой момент: hermes model" -ForegroundColor DarkGray
+    } else {
+        WarnMsg "Не удалось выставить модель по умолчанию автоматически. Сейчас откроется мастер — выберите провайдера (OpenRouter / Anthropic / OpenAI / Nous Portal / Ollama)."
+        if (-not $Yes) { & hermes model }
+    }
 }
 
 # ─── 12. доктор ──────────────────────────────────────────────────────────────
@@ -453,8 +478,8 @@ Write-Host @"
      • Микрофон             -> разрешить приложениям (и рабочему столу)
      • Уведомления           -> разрешить JARVIS/PowerShell показывать баллоны
      • Тихий час (Focus Assist) -> нет публичного API — переключается вручную
-   Outlook (если нужен календарь/контакты): должен быть установлен и настроен
-     на профиль по умолчанию, JARVIS обращается к нему через COM.
+   Календарь: JARVIS использует Google Calendar (не Outlook) — выполните
+     `jarvis calendar setup` и войдите через браузер, если нужен доступ к календарю.
 
  Запуск (откройте новое окно PowerShell, чтобы подхватился PATH):
    jarvis              — голосовой режим в терминале (wake word «Hey Jarvis», Ctrl+B — говорить)

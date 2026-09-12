@@ -40,7 +40,13 @@ if sys.platform == "win32":  # pragma: no cover — покрыто CI на windo
 TASKS = ("JARVIS-HUD", "JARVIS-Gateway", "JARVIS-Updater", "JARVIS-App")
 
 # Task Scheduler XML — RestartOnFailure даёт то же, что launchd KeepAlive+ThrottleInterval:
-# при падении процесс перезапускается (до 999 раз, каждые ~1 минуту).
+# при падении процесс перезапускается, каждые ~1 минуту.
+# ВАЖНО: элемент Count в схеме Task Scheduler (и в MS-TSCH 2.5.4.2) имеет тип unsignedByte —
+# допустимый диапазон 1..255. Раньше здесь стояло 999 — это вне схемы, и schtasks.exe
+# отвергал такой XML целиком, но выводил при этом обманчивую ошибку "Отказано в доступе"
+# вместо внятного сообщения о невалидной схеме. Из-за этого регистрировались только задачи
+# БЕЗ RestartOnFailure (JARVIS-Updater), а HUD/Gateway/App (restart=True) падали с
+# "Access is denied" — что и было замечено пользователем как проблему с правами.
 _TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -80,18 +86,20 @@ _TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 _TRIGGER_LOGON = "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
 _TRIGGER_DAILY = ("<CalendarTrigger><StartBoundary>{date}T{time}:00</StartBoundary>"
                    "<Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger>")
-_RESTART_ON_FAILURE = "<RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>"
+_RESTART_ON_FAILURE = "<RestartOnFailure><Interval>PT1M</Interval><Count>255</Count></RestartOnFailure>"
 
 
 def _run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     kw.setdefault("capture_output", True)
     kw.setdefault("text", True)
-    # kw.setdefault("text", True) выше не ловится простым текстовым поиском "text=True" — subprocess
-    # без явного encoding= декодирует stdout/stderr дочернего процесса (schtasks.exe) через
-    # locale.getpreferredencoding(), которая на этой машине оказалась cp1251, а не UTF-8: вывод
-    # schtasks с любой не-ASCII последовательностью байт валился с UnicodeDecodeError прямо в
-    # фоновом _readerthread, из-за чего результат вообще не долетал до кода (пусто).
-    kw.setdefault("encoding", "utf-8")
+    # schtasks.exe — консольная программа: она пишет stdout/stderr в кодировке OEM-кодовой
+    # страницы консоли (GetOEMCP(), напр. cp866 для русской локали), а НЕ в ANSI-кодировке
+    # (GetACP(), напр. cp1251) и уж тем более не в UTF-8. Раньше здесь стояло encoding="utf-8":
+    # это не падало (errors="replace" глотал ошибки декодирования), но результат превращался
+    # в нечитаемую кашу (напр. "ОШИБКА: Отказано в доступе." → "������: �⪠���� � ����㯥.")
+    # вместо настоящего текста ошибки. Python начиная с 3.6 имеет отдельный кодек "oem" именно
+    # для этого случая (https://bugs.python.org/issue27959) — используем его на Windows.
+    kw.setdefault("encoding", "oem" if sys.platform == "win32" else "utf-8")
     kw.setdefault("errors", "replace")
     kw.setdefault("timeout", 30)
     if sys.platform == "win32":

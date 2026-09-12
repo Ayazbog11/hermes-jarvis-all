@@ -45,3 +45,35 @@ def test_version_check_reads_update_json(monkeypatch, tmp_path):
     (tmp_path / "jarvis" / "update.json").write_text(json.dumps({"available": True, "latest": "1.9.0"}), encoding="utf-8")
     c = d.check_version(False)
     assert c.status == "warn" and "1.9.0" in c.note and c.fix_hint == "jarvis update"
+
+
+def test_check_telegram_ok_when_telethon_importable(monkeypatch, tmp_path):
+    d = load(monkeypatch, tmp_path)
+    c = d.check_telegram(fix=False)
+    # telethon подтягивается в этой песочнице для тестового прогона — проверяем, что доктор
+    # видит его через тот же sys.executable, что использует pytest сейчас (тот же интерпретатор,
+    # что и у HUD/setup_scheduled_tasks.py в реальной установке).
+    assert c.status == "ok"
+    assert "telethon" in c.note
+
+
+def test_check_telegram_warns_when_not_importable(monkeypatch, tmp_path):
+    d = load(monkeypatch, tmp_path)
+    # Симулируем интерпретатор без telethon: используем -S (skip site) не годится (модуль всё
+    # равно виден через обычные site-packages) — вместо этого подменяем sh() так, будто импорт
+    # правда падает, точно так же, как это выглядело бы на другом (venv-рассинхронизированном)
+    # интерпретаторе.
+    monkeypatch.setattr(d, "sh", lambda cmd, timeout=20, env=None: (1, "ModuleNotFoundError: No module named 'telethon'"))
+    c = d.check_telegram(fix=False)
+    assert c.status == "warn"
+    assert "не импортируется" in c.note
+
+
+def test_check_model_treats_not_found_marker_as_unset(monkeypatch, tmp_path):
+    d = load(monkeypatch, tmp_path)
+    # Regression guard: some CLI builds могут вывести текстовое "not found"/"not set" вместо
+    # пустой строки для незаданного ключа — доктор не должен показывать это как имя модели.
+    monkeypatch.setattr(d, "sh", lambda cmd, timeout=20, env=None: (0, "not found"))
+    c = d.check_model(fix=False, do_ping=False)
+    assert c.status == "fail"
+    assert "не настроена" in c.note

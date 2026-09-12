@@ -211,6 +211,25 @@ def is_available() -> bool:
     return _hermes_bin() is not None
 
 
+# Подстроки, которыми `hermes config get <key>` может сообщить об отсутствующем/не заданном
+# значении вместо пустого вывода (разные версии Hermes CLI формулируют это по-разному — сейчас
+# актуальная выводит "Config key not set: <key>" в stderr с exit-код 1, что уже отфильтровывается
+# ниже проверкой returncode; но HUD ранее показывал буквальный текст "not found" в поле модели —
+# это стало возможным, если КАКАЯ-ТО версия hermes печатает такое сообщение в stdout с exit-код 0
+# (например, при устаревшем или изменившемся формате CLI). Раньше get_all() слепо брал
+# out.stdout.strip() при returncode == 0 без проверки содержимого — если бы это когда-нибудь
+# оказалось так, "not found"/"not set"/"null" ушло бы в HUD как будто это реальное имя модели.
+# Фильтруем такие маркеры защитно, независимо от того, какая версия CLI сейчас установлена.
+_NOT_SET_MARKERS = ("not found", "not set", "нет значения", "не задано")
+
+
+def _clean_config_value(raw: str) -> str:
+    v = (raw or "").strip()
+    if not v or v.lower() in ("null", "none") or any(m in v.lower() for m in _NOT_SET_MARKERS):
+        return ""
+    return v
+
+
 def get_all(timeout: float = 10.0) -> dict:
     """Прочитать текущие значения всех разрешённых ключей через `hermes config get`.
 
@@ -224,7 +243,7 @@ def get_all(timeout: float = 10.0) -> dict:
     for label, (key, _hint) in ALLOWED_KEYS.items():
         try:
             out = subprocess.run([hermes, "config", "get", key], capture_output=True, text=True, timeout=timeout)
-            values[label] = out.stdout.strip() if out.returncode == 0 else ""
+            values[label] = _clean_config_value(out.stdout) if out.returncode == 0 else ""
         except (subprocess.TimeoutExpired, OSError):
             values[label] = ""
     return {"success": True, "values": values, "fields": {k: v[1] for k, v in ALLOWED_KEYS.items()}}

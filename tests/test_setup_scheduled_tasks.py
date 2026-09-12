@@ -73,12 +73,37 @@ def test_task_xml_valid_without_restart_block_too():
     assert root.find("t:Settings/t:RestartOnFailure", NS) is None
 
 
-def test_run_helper_defaults_to_utf8_encoding_for_subprocess():
-    # Regression guard for the UnicodeDecodeError seen on a cp1251-locale Windows machine:
-    # _run() must always decode child-process output as UTF-8 with errors replaced, never
-    # fall back to the platform's default locale encoding.
+def test_run_helper_uses_oem_encoding_on_windows():
+    # Regression guard: schtasks.exe (a console app) writes stdout/stderr in the console's
+    # OEM code page (GetOEMCP(), e.g. cp866 on a Russian-locale Windows machine), not UTF-8
+    # and not the ANSI code page (GetACP()/cp1251). Decoding as UTF-8 doesn't raise (errors=
+    # "replace" swallows it) but silently mangles every non-ASCII message into mojibake —
+    # confirmed on a real user machine: "ОШИБКА: Отказано в доступе." became
+    # "������: �⪠���� � ����㯥." when cp866 bytes were misdecoded as UTF-8. Python's
+    # built-in "oem" codec (since 3.6, bpo-27959) decodes via the true console code page.
     import inspect
 
     src = inspect.getsource(sst._run)
-    assert 'kw.setdefault("encoding", "utf-8")' in src
+    assert '"oem" if sys.platform == "win32" else "utf-8"' in src
     assert 'kw.setdefault("errors", "replace")' in src
+
+
+def test_restart_on_failure_count_within_schema_range():
+    """Task Scheduler XML schema (and MS-TSCH 2.5.4.2) types RestartOnFailure/Count as
+    unsignedByte, valid range 1..255. A value of 999 (the original bug) is out of schema
+    and schtasks.exe rejects the whole XML — but reports a generic/misleading error
+    ("Access is denied.") instead of a schema-validation message, which is exactly what a
+    real user hit: JARVIS-HUD/Gateway/App (restart=True) failed to register while
+    JARVIS-Updater (restart=False, no RestartOnFailure block) succeeded.
+    """
+    root = ET.fromstring(_render(restart=True).encode("utf-16"))
+    count_el = root.find("t:Settings/t:RestartOnFailure/t:Count", NS)
+    assert count_el is not None
+    count = int(count_el.text)
+    assert 1 <= count <= 255, f"RestartOnFailure/Count={count} is outside the unsignedByte schema range 1..255"
+
+
+def test_restart_on_failure_interval_present_and_valid_duration():
+    root = ET.fromstring(_render(restart=True).encode("utf-16"))
+    interval_el = root.find("t:Settings/t:RestartOnFailure/t:Interval", NS)
+    assert interval_el is not None and interval_el.text == "PT1M"

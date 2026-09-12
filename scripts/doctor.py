@@ -7,11 +7,12 @@ jarvis doctor — самодиагностика JARVIS одной команд�
     jarvis doctor --json     машинно-читаемый отчёт (использует JARVIS.app)
 
 Проверки (каждая — независима, падение одной не мешает другим):
-  1. hermes установлен и отвечает                    6. HUD отвечает на :8765 и знает ключ API
-  2. модель настроена и РЕАЛЬНО отвечает (ping)     7. launchd-агенты загружены (если ставили)
-  3. плагины JARVIS включены и импортируются        8. права macOS (краткая выжимка selftest)
-  4. API-сервер Hermes (.env) включён, ключ есть     9. хранилище ~/JARVIS и индекс
-  5. gateway/API :8642 живой                        10. версия JARVIS и доступные обновления
+  1. hermes установлен и отвечает                    7. launchd/Scheduled Tasks/systemd загружены
+  2. модель настроена и РЕАЛЬНО отвечает (ping)     8. telethon импортируется тем же Python, что HUD
+  3. плагины JARVIS включены и импортируются        9. права macOS (краткая выжимка selftest)
+  4. API-сервер Hermes (.env) включён, ключ есть    10. хранилище ~/JARVIS и индекс
+  5. gateway/API :8642 живой                        11. версия JARVIS и доступные обновления
+  6. HUD отвечает на :8765 и знает ключ API
 
 Идея: новичок при любой проблеме запускает `jarvis doctor --fix` и получает либо «всё зелёное», либо конкретный
 следующий шаг человеческим языком. Без LLM (кроме одного короткого ping модели, который можно отключить --no-model).
@@ -88,7 +89,13 @@ def sh(cmd: list[str], timeout: int = 20, env: dict | None = None) -> tuple[int,
             path = f"{BIN};" + os.environ.get("PATH", "")
         else:
             path = f"{BIN}:/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")
-        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+        # На Windows консольные программы (schtasks.exe и т.п.) пишут в OEM-кодовой странице
+        # консоли (GetOEMCP(), напр. cp866 на русской локали), а не в UTF-8 — см. тот же разбор
+        # в scripts/setup_scheduled_tasks.py::_run(). encoding="utf-8" здесь не падает
+        # (errors="replace" глотает несовпадения), но результат превращается в нечитаемую кашу,
+        # из-за которой пользователь не может понять реальную причину ошибки в "jarvis doctor".
+        enc = "oem" if IS_WINDOWS else "utf-8"
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding=enc, errors="replace", timeout=timeout,
                            env={**os.environ, "PATH": path, **(env or {})},
                            creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
@@ -148,6 +155,13 @@ def check_model(fix: bool, do_ping: bool) -> Check:
     c = Check("Модель LLM")
     code, out = sh(["hermes", "config", "get", "model"], timeout=30)
     model = out.strip().splitlines()[-1].strip() if code == 0 and out.strip() else ""
+    # Некоторые версии/сборки `hermes config get` могут вывести текстовое сообщение об
+    # отсутствующем значении (например, "not found"/"not set") вместо пустой строки — это НЕ
+    # имя модели, и его нельзя показывать пользователю как будто модель настроена (см. тот же
+    # разбор в scripts/model_switch.py::_clean_config_value(), тот же класс бага, что вызывал
+    # "Модель ИИ: not found" на HUD).
+    if model and any(m in model.lower() for m in ("not found", "not set", "нет значения", "не задано")):
+        model = ""
     if not model or model in ("None", "null", ""):
         return c.fail("модель не настроена", "hermes model   (выберите OpenRouter/Anthropic/OpenAI/Ollama)")
     if not do_ping:
@@ -262,7 +276,13 @@ def check_launchd(fix: bool) -> Check:
         tasks = [t for t in ("JARVIS-HUD", "JARVIS-Gateway", "JARVIS-Updater", "JARVIS-App") if t in out]
         if not tasks:
             if fix:
-                sh([sys.executable, str(JARVIS_HOME / "setup_scheduled_tasks.py")], timeout=30)
+                # setup_scheduled_tasks.py требует явную подкоманду ("install") и обязательные
+                # --home/--python (см. argparse в самом скрипте) — раньше здесь вызывался без
+                # единого аргумента, из-за чего argparse сразу завершался с usage-ошибкой
+                # (exit 2), а `sh()` эту ошибку тихо проглатывал: "jarvis doctor --fix" молча
+                # ничего не чинил и продолжал показывать предупреждение на каждом запуске.
+                sh([sys.executable, str(JARVIS_HOME / "setup_scheduled_tasks.py"), "install",
+                    "--home", str(HERMES_HOME), "--python", sys.executable], timeout=30)
                 code, out = sh(["schtasks", "/Query", "/FO", "LIST"], timeout=15)
                 tasks = [t for t in ("JARVIS-HUD", "JARVIS-Gateway", "JARVIS-Updater", "JARVIS-App") if t in out]
                 if tasks:
@@ -368,6 +388,34 @@ def check_vault(fix: bool) -> Check:
     return c.ok(note + (" · " + "; ".join(extras) if extras else ""))
 
 
+def check_telegram(fix: bool) -> Check:
+    """Проверить, что telethon реально импортируется ТЕМ ЖЕ интерпретатором Python, что
+    запускает HUD/плагины (sys.executable — тот же venv, что install.ps1/install.sh кладут
+    в PATH и передают в setup_scheduled_tasks.py/scheduled task).
+
+    Раньше install.ps1 ставил telethon через `uv pip install` без явного --python: если
+    что-то в окружении PowerShell-сессии уже выставляло $env:VIRTUAL_ENV/CONDA_PREFIX не на
+    тот venv, пакет мог уйти в другой Python, чем тот, который реально использует HUD —
+    install.ps1 печатал "✔ telethon установлен" (реальный успех pip), но HUD всё равно
+    показывал "telethon не установлен", потому что `import telethon` в его собственном
+    интерпретаторе падал. Эта проверка ловит именно такое расхождение: `hermes doctor` и HUD
+    запускаются одним и тем же $VenvPy, так что если ЗДЕСЬ telethon не импортируется — значит
+    не импортируется и у HUD, а не наоборот (ложной тревоги from HUD).
+    """
+    c = Check("Telegram (telethon)")
+    code, out = sh([sys.executable, "-c", "import telethon; print(telethon.__version__)"], timeout=15)
+    if code == 0 and out.strip():
+        return c.ok(f"telethon {out.strip().splitlines()[-1]} — тот же интерпретатор, что у HUD")
+    if fix:
+        sh([sys.executable, "-m", "pip", "install", "-q", "telethon"], timeout=60)
+        code, out = sh([sys.executable, "-c", "import telethon; print(telethon.__version__)"], timeout=15)
+        if code == 0 and out.strip():
+            c.fixed = True
+            return c.ok(f"telethon {out.strip().splitlines()[-1]} (установлено сейчас)")
+    return c.warn("не импортируется этим интерпретатором — Telegram userbot будет недоступен",
+                  f'"{sys.executable}" -m pip install telethon   (jarvis telegram недоступен до этого)')
+
+
 def check_version(fix: bool) -> Check:
     c = Check("Версия JARVIS")
     inst, upd = {}, {}
@@ -399,6 +447,7 @@ def run(fix: bool, ping_model: bool, quick: bool) -> list[Check]:
     checks.append(check_gateway(fix))
     checks.append(check_hud(fix))
     checks.append(check_launchd(fix))
+    checks.append(check_telegram(fix))
     if not quick:
         checks.append(check_permissions(fix))
     checks.append(check_vault(fix))

@@ -73,6 +73,19 @@ function Quiet([scriptblock]$Block) {
     try { & $Block } finally { $ErrorActionPreference = $prevEap }
 }
 
+# "Хвост" массива с элемента 1 и до конца — НЕ писать напрямую $arr[1..($arr.Count - 1)]:
+# когда $arr.Count -eq 1, это превращается в $arr[1..0] — ОБРАТНЫЙ диапазон индексов [1, 0],
+# то есть несуществующий индекс 1 (даёт $null, который PowerShell молча выбрасывает из
+# результата) СЛЕДОМ за индексом 0 — тем же самым единственным элементом, который уже был
+# обработан как "первый" аргумент. Итог: "хвост" оказывается равен исходному одноэлементному
+# массиву вместо пустого — например, `jarvis update --check` вызывал `update.py check --check`
+# (падало с "unrecognized arguments: --check"), а `jarvis brain sql --rw` подставлял `--rw`
+# как сам текст SQL-запроса. Tail даёт то же самое безопасно при любой длине массива.
+function Tail([object[]]$Arr) {
+    if ($null -eq $Arr -or $Arr.Count -le 1) { return @() }
+    return $Arr[1..($Arr.Count - 1)]
+}
+
 # ─────────────────────────────── HUD ────────────────────────────────────
 
 function Hud-PidAlive {
@@ -281,7 +294,7 @@ switch ($Command) {
     "heartbeat" { & hermes chat -s jarvis/heartbeat -q "Heartbeat. Проверь HEARTBEAT.md и ответь NO_REPLY, если ничего не требует внимания."; break }
     "brain" {
         $sub = if ($Rest.Count -gt 0) { $Rest[0] } else { "stats" }
-        $rest2 = if ($Rest.Count -gt 1) { $Rest[1..($Rest.Count - 1)] } else { @() }
+        $rest2 = Tail $Rest
         $brainDb = Join-Path $HermesHome "plugin-data\jarvis-brain\brain.db"
         switch ($sub) {
             "review" { & hermes chat -s brain-nightly-review -q "Проведи ревизию базы знаний по навыку brain-nightly-review прямо сейчас и дай отчёт."; break }
@@ -295,7 +308,7 @@ switch ($Command) {
             }
             "sql" {
                 if (-not (Test-Path $brainDb)) { Fail "базы ещё нет: $brainDb" }
-                if ($rest2.Count -gt 0 -and $rest2[0] -eq "--rw") { Invoke-BrainSql $brainDb ($rest2[1..($rest2.Count - 1)] -join " ") -ReadWrite }
+                if ($rest2.Count -gt 0 -and $rest2[0] -eq "--rw") { Invoke-BrainSql $brainDb ((Tail $rest2) -join " ") -ReadWrite }
                 else { Invoke-BrainSql $brainDb ($rest2 -join " ") }
                 break
             }
@@ -357,7 +370,7 @@ switch ($Command) {
         break
     }
     "doctor" {
-        if ($Rest.Count -gt 0 -and $Rest[0] -eq "--hermes") { & hermes doctor @($Rest[1..($Rest.Count - 1)]) }
+        if ($Rest.Count -gt 0 -and $Rest[0] -eq "--hermes") { & hermes doctor @(Tail $Rest) }
         else {
             $doctorPy = Join-Path $JarvisHome "doctor.py"
             if (-not (Test-Path $doctorPy)) { Fail "doctor.py не установлен (install.ps1)" }
@@ -369,9 +382,9 @@ switch ($Command) {
         $sub = if ($Rest.Count -gt 0) { $Rest[0] } else { "" }
         $updatePy = Join-Path $JarvisHome "update.py"
         switch -Regex ($sub) {
-            "^(--check|check)$" { & $Py $updatePy check @($Rest[1..($Rest.Count - 1)]); break }
+            "^(--check|check)$" { & $Py $updatePy check @(Tail $Rest); break }
             "^(--rollback|rollback)$" { & $Py $updatePy rollback; break }
-            "^(--status|status)$" { & $Py $updatePy status @($Rest[1..($Rest.Count - 1)]); break }
+            "^(--status|status)$" { & $Py $updatePy status @(Tail $Rest); break }
             "^(--channel|channel)$" { & $Py $updatePy set channel $Rest[1]; break }
             "^(--auto|auto)$" { & $Py $updatePy set auto $Rest[1]; break }
             "^--hermes$" { & hermes update; break }

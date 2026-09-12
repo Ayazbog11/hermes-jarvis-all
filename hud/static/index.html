@@ -223,7 +223,6 @@
   <header>
     <div class="wordmark">JARVIS</div>
     <div class="hright">
-      <span class="chip" id="updChip" title="Доступно обновление — нажмите, чтобы установить">Обновление</span>
       <span class="chip" id="modeChip"></span>
       <span class="status" id="status"><i></i><span id="statusTx">Подключение…</span></span>
       <span class="sep"></span>
@@ -455,13 +454,10 @@
     const focusOn = mode==='focus'; const fname = f && f.active ? f.name : '';
     const focusRow = `<div class="row sys"><span class="tile violet">${ICON.moon}</span><span class="tx"><b>Режим фокуса</b><small>${focusOn?'JARVIS отвечает кратко':(fname?'macOS: '+esc(fname):'уведомления и подсказки включены')}</small></span><button class="pill ${focusOn?'on':''}" id="focusToggle">${focusOn?'Вкл':'Выкл'}</button></div>`;
     const modelRow = `<div class="row sys"><span class="tile">${ICON.box}</span><span class="tx"><small style="margin:0 0 2px">Модель</small><b>${esc(dash.model||'—')}</b></span><span class="chev">${v.version?`<span class="muted" style="font-size:12px">v${esc(v.version)}</span>`:''}</span></div>`;
-    const updRow = v.update_available ? `<div class="row sys"><span class="tile amber">${ICON.box}</span><span class="tx"><b>Доступно обновление</b><small>версия ${esc(v.latest||'?')}</small></span><button class="pill on" id="sysUpdateBtn">Обновить</button></div>` : '';
-    b.innerHTML = battRow + focusRow + modelRow + updRow;
+    b.innerHTML = battRow + focusRow + modelRow;
     $('#focusToggle').onclick = async () => { const m = focusOn?'normal':'focus'; dash.mode = m; renderSystem(); await post('/api/mode',{mode:m}); };
-    if ($('#sysUpdateBtn')) $('#sysUpdateBtn').onclick = startUpdate;
     $('#modeChip').textContent = {focus:'Фокус', night:'Ночь', presentation:'Презентация'}[mode]||''; $('#modeChip').classList.toggle('show', mode!=='normal');
     document.body.classList.toggle('night', mode==='night');
-    $('#updChip').classList.toggle('show', !!v.update_available); if (v.latest) $('#updChip').textContent = 'Обновление ' + v.latest;
   }
   function renderTimers(){
     const b = $('#timersBody'), ts = dash.timers||[];
@@ -683,17 +679,6 @@
   $('#timersMore').onclick = async () => { for (const t of dash.timers||[]) await post('/api/timer',{action:'cancel',label:t.label,target:t.target}); loadDash(); };
   $('#timerAdd').onclick = () => { $('#tform').classList.toggle('show'); $('#tMin').focus(); };
   $('#tform').onsubmit = async e => { e.preventDefault(); const m = +$('#tMin').value; if (!m) return; await post('/api/timer',{action:'set', minutes:m, label:$('#tLabel').value||`Таймер ${m} мин`}); $('#tform').classList.remove('show'); $('#tMin').value=''; $('#tLabel').value=''; loadDash(); };
-  // ── Обновление JARVIS — прямая кнопка на HUD (раньше единственный способ был написать
-  // текстом в чат и надеяться, что модель вызовет jarvis_update; теперь это REST-вызов) ──
-  async function startUpdate(){
-    if (!confirm('Установить обновление JARVIS сейчас? Сервисы перезапустятся.')) return;
-    toast('Обновление запущено…', 'bolt', 'cyan', 8);
-    try {
-      const r = await post('/api/update/apply', {});
-      if (!r.success) toast(`Не удалось запустить обновление: ${r.error||'ошибка'}`, 'bell', 'amber', 15);
-    } catch { toast('HUD не смог связаться с update.py', 'bell', 'amber'); }
-  }
-  $('#updChip').onclick = startUpdate;
 
   // ───────────────────────── лента активности ─────────────────────────
   const feed = [];
@@ -773,15 +758,10 @@
     on('dashboard.update', d => { Object.assign(dash, d); renderAll(); });
     on('timer.update', d => { dash.timers = d.timers||[]; renderTimers(); });
     on('timer.fire', d => { toast(d.label||'Таймер', 'bell', 'cyan', 30); log('ok', `⏰ ${esc(d.label)}`); });
-    on('alert', d => { log('err', `${esc(d.kind||'alert')} · ${esc(d.text||'')}`); if (d.kind==='update') { $('#updChip').classList.add('show'); return; } toast(d.text||'', d.kind==='battery'?'batt':d.kind==='calendar'?'cal':'bell', d.kind==='battery'?'amber':'cyan', 20); });
+    on('alert', d => { log('err', `${esc(d.kind||'alert')} · ${esc(d.text||'')}`); toast(d.text||'', d.kind==='battery'?'batt':d.kind==='calendar'?'cal':'bell', d.kind==='battery'?'amber':'cyan', 20); });
     on('brain.update', d => log('', `память · ${esc(d.content||'')}`));
     on('brain.stats', () => loadDash());
     on('vault.update', d => { log('', `хранилище · ${d.action==='add'?'подключён проект '+esc(d.name||''):'проиндексировано '+(d.indexed||0)}`); loadDash(); });
-    on('update.progress', d => {
-      if (d.success) toast(d.updated ? `JARVIS обновлён до ${d.to||'?'}` : (d.rolled_back ? `Откат на ${d.to||'?'}` : (d.reason||'Обновление завершено')), 'bolt', 'green', 12);
-      else toast(`Обновление не удалось: ${(d.error||'').slice(0,200)}`, 'bell', 'amber', 20);
-      loadDash();
-    });
     on('hud.online', () => {});
   }
   function setStatus(sse){ const st=$('#status'); const api = !!(dash.hermes_up); st.className = 'status ' + (sse && api ? 'on' : sse ? '' : 'off'); $('#statusTx').textContent = !sse ? 'Нет связи с HUD' : api ? 'Online' : 'Hermes API выключен'; }
