@@ -352,30 +352,50 @@ if ($userPath -notlike "*$BinDir*") {
 
 # install.json — по нему работает автообновление (jarvis update); настройки канала/режима сохраняются
 $writeInstallJson = @'
-import json, sys, datetime, pathlib
-# args[6:] дополняем пустыми строками на случай, если вызывающая сторона (PowerShell отбрасывает
-# позиционные $null-аргументы внешних команд) передала меньше 6 значений — не падаем молча.
-args = (sys.argv[1:] + [""] * 6)[:6]
-p, ver, commit, repo, channel, auto = pathlib.Path(args[0]), *args[1:]
+import json, os, sys, datetime, pathlib
+# Значения читаем из переменных окружения, а не из позиционных argv — PowerShell при вызове
+# ВНЕШНЕЙ программы отбрасывает не только $null, но и ПУСТУЮ СТРОКУ "" (подтверждённый баг/
+# поведение самого PowerShell, см. PowerShell/PowerShell#6280: "Powershell dropping empty
+# string argument"; воспроизводится и через переменную, и даже через явный литерал "" в
+# некоторых версиях/режимах). Раньше здесь ждали ровно 6 позиционных аргументов и просто
+# добивали список пустыми строками, если их пришло меньше — но проблема ровно в обратном:
+# PowerShell отбрасывает СЕРЕДИНУ списка (пустой $commitArg/$channelArg/$autoArg), поэтому
+# все аргументы ПОСЛЕ первого пустого сдвигались на одну позицию влево, и repo/channel/auto
+# получали чужие значения (JarvisRepo уезжал в поле commit, а repo/channel/auto оставались
+# пустыми) — сохранялся сломанный install.json без единого сообщения об ошибке. Реальный
+# симптом на машине пользователя: `jarvis status` показывало "JARVIS 2.1.5 (Ayazbog) ·  ·
+# канал stable" — "Ayazbog" это begin of "Ayazbog11/hermes-jarvis-all" обрезанный до 7
+# символов (repo уехал в поле commit), а repo/channel оба стали пустой строкой — отсюда же
+# "репозиторий  недоступен или пуст" (двойной пробел = f"репозиторий {''} недоступен") в
+# `jarvis update`. Переменные окружения PowerShell передаёт дочернему процессу всегда, даже
+# пустые — этой проблеме не подвержены.
+p = pathlib.Path(sys.argv[1])
+ver = os.environ.get("JARVIS_INSTALL_VERSION", "")
+commit = os.environ.get("JARVIS_INSTALL_COMMIT", "")
+repo = os.environ.get("JARVIS_INSTALL_REPO", "")
+channel = os.environ.get("JARVIS_INSTALL_CHANNEL", "")
+auto = os.environ.get("JARVIS_INSTALL_AUTO", "")
 old = {}
 try: old = json.loads(p.read_text(encoding="utf-8"))
 except Exception: pass
-data = {**old, "version": ver, "commit": commit or old.get("commit", ""), "repo": repo,
+data = {**old, "version": ver, "commit": commit or old.get("commit", ""), "repo": repo or old.get("repo", ""),
         "channel": channel or old.get("channel", "stable"), "auto_update": auto or old.get("auto_update", "auto"),
         "installed_at": datetime.datetime.now().replace(microsecond=0).isoformat()}
 p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 '@
 $installJsonScript = Join-Path $env:TEMP "jarvis-write-install-json.py"
 Set-Content -Path $installJsonScript -Value $writeInstallJson -Encoding UTF8
-# $env:JARVIS_COMMIT/$env:JARVIS_CHANNEL/$env:JARVIS_AUTO_UPDATE обычно не заданы при первой
-# установке (их выставляет только jarvis update). PowerShell при вызове внешней программы
-# полностью ОТБРАСЫВАЕТ позиционные аргументы со значением $null — а не передаёт пустую строку,
-# как можно было бы ожидать. Из-за этого пропадали сразу 3 аргумента и python получал 3 вместо 6
-# ("not enough values to unpack"). Подставляем явную пустую строку вместо $null.
-$commitArg = if ($env:JARVIS_COMMIT) { $env:JARVIS_COMMIT } else { "" }
-$channelArg = if ($env:JARVIS_CHANNEL) { $env:JARVIS_CHANNEL } else { "" }
-$autoArg = if ($env:JARVIS_AUTO_UPDATE) { $env:JARVIS_AUTO_UPDATE } else { "" }
-& $VenvPy $installJsonScript (Join-Path $JarvisHomeDir "install.json") $JarvisVersion $commitArg $JarvisRepo $channelArg $autoArg
+# JARVIS_COMMIT/JARVIS_CHANNEL/JARVIS_AUTO_UPDATE обычно не заданы при первой установке (их
+# выставляет только jarvis update при самообновлении) — прокидываем их дальше через ещё одни
+# переменные окружения (JARVIS_INSTALL_*), а не как позиционные argv, см. комментарий в
+# writeInstallJson выше про то, почему argv здесь принципиально ненадёжны в PowerShell.
+$env:JARVIS_INSTALL_VERSION = $JarvisVersion
+$env:JARVIS_INSTALL_COMMIT = $env:JARVIS_COMMIT
+$env:JARVIS_INSTALL_REPO = $JarvisRepo
+$env:JARVIS_INSTALL_CHANNEL = $env:JARVIS_CHANNEL
+$env:JARVIS_INSTALL_AUTO = $env:JARVIS_AUTO_UPDATE
+& $VenvPy $installJsonScript (Join-Path $JarvisHomeDir "install.json")
+Remove-Item Env:\JARVIS_INSTALL_VERSION, Env:\JARVIS_INSTALL_COMMIT, Env:\JARVIS_INSTALL_REPO, Env:\JARVIS_INSTALL_CHANNEL, Env:\JARVIS_INSTALL_AUTO -ErrorAction SilentlyContinue
 Remove-Item $installJsonScript -ErrorAction SilentlyContinue
 Ok "install.json: версия $JarvisVersion"
 

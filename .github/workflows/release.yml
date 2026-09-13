@@ -29,10 +29,24 @@ jobs:
         with: { fetch-depth: 0 }
       - id: v
         run: echo "version=$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
-      - name: Skip if tag exists
+      - name: Skip if release already published
         id: t
+        # ВАЖНО: проверяем существование именно GitHub Release через API, а НЕ `git rev-parse
+        # v${version}` через локальный git-тег. Раньше здесь была проверка git-тега — но тег
+        # обычно создаётся и пушится вручную (`git tag vX.Y.Z && git push --tags`) в ТОМ ЖЕ
+        # действии, что и пуш файла VERSION, который и запускает этот workflow. Из-за
+        # `fetch-depth: 0` checkout выше подтягивает уже запушенный тег, `git rev-parse`
+        # находит его немедленно и шаг решает, что релиз "уже есть" — хотя объект Release на
+        # GitHub при этом никогда не создавался. Итог: тег есть, CI зелёный, а
+        # `releases/latest` не продвигается — ровно это наблюдалось для v2.1.1..v2.1.5
+        # (git-теги существуют, но GitHub Releases застряли на v2.1.0). Проверка через API
+        # релизов (а не тегов) не подвержена этой гонке.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if git rev-parse "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; fi
+          if gh release view "v${{ steps.v.outputs.version }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-python@v5
         if: steps.t.outputs.exists != 'true'
         with: { python-version: "3.12" }

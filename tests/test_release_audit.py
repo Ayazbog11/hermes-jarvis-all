@@ -194,3 +194,42 @@ def test_install_json_written_by_installer_snippet(tmp_path):
     subprocess.run([sys.executable, "-", str(p), "1.7.0", "", "x/y", "", ""], input=snippet, text=True, encoding="utf-8", check=True)
     d = json.loads(p.read_text(encoding="utf-8"))
     assert d["version"] == "1.7.0" and d["channel"] == "main" and d["auto_update"] == "auto" and d["commit"] == "old"
+
+
+def test_install_ps1_writes_install_json_via_env_not_argv(tmp_path):
+    """Регресс: PowerShell отбрасывает ПУСТЫЕ строковые argv-аргументы при вызове внешней
+    программы (не только $null), из-за чего repo/channel/auto могли уехать на чужие позиции
+    (PowerShell/PowerShell#6280). Фрагмент install.ps1 обязан читать значения из переменных
+    окружения JARVIS_INSTALL_*, а не из sys.argv[2:], и не должен принимать позиционные
+    version/commit/repo/channel/auto вообще (только путь к install.json)."""
+    text = (ROOT / "install.ps1").read_text(encoding="utf-8")
+    start = text.index("$writeInstallJson = @'\n") + len("$writeInstallJson = @'\n")
+    snippet = text[start:text.index("\n'@", start)]
+    assert "os.environ.get(\"JARVIS_INSTALL_VERSION\"" in snippet
+    assert "os.environ.get(\"JARVIS_INSTALL_REPO\"" in snippet
+    assert "sys.argv[2]" not in snippet and "sys.argv[3]" not in snippet
+    p = tmp_path / "install.json"
+    p.write_text(json.dumps({"channel": "main", "auto_update": "auto", "commit": "old"}), encoding="utf-8")
+    env = {**os.environ, "JARVIS_INSTALL_VERSION": "1.7.0", "JARVIS_INSTALL_COMMIT": "",
+           "JARVIS_INSTALL_REPO": "x/y", "JARVIS_INSTALL_CHANNEL": "", "JARVIS_INSTALL_AUTO": ""}
+    subprocess.run([sys.executable, "-", str(p)], input=snippet, text=True, encoding="utf-8", check=True, env=env)
+    d = json.loads(p.read_text(encoding="utf-8"))
+    assert d["version"] == "1.7.0" and d["repo"] == "x/y" and d["channel"] == "main" \
+        and d["auto_update"] == "auto" and d["commit"] == "old"
+
+
+def test_release_workflow_skip_check_uses_gh_release_not_git_tag():
+    """Регресс: release.yml раньше пропускал публикацию релиза, если git-тег vX.Y.Z уже
+    существовал в репозитории (`git rev-parse`). Но тег обычно создаётся и пушится ВМЕСТЕ с
+    коммитом, который меняет VERSION и запускает этот workflow (`git tag vX.Y.Z && git push
+    --tags`) — к моменту checkout (fetch-depth: 0) тег уже виден, `git rev-parse` находит его
+    сразу, и шаг ошибочно решает, что релиз "уже есть", хотя объект GitHub Release никогда не
+    создавался. Итог: CI зелёный, тег запушен, а `releases/latest` не продвигается (реально
+    воспроизвелось для v2.1.1..v2.1.5). Проверка обязана идти через `gh release view` (API), а
+    не через локальный git-тег."""
+    import yaml
+    text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "gh release view" in text, "проверка «уже опубликован» должна идти через GitHub Release API"
+    y = yaml.safe_load(text)
+    run_step = next(s for s in y["jobs"]["release"]["steps"] if s.get("id") == "t")
+    assert "git rev-parse" not in run_step["run"], "нельзя определять «уже опубликован» по наличию git-тега — тег пушится раньше релиза"

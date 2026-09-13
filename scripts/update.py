@@ -141,16 +141,34 @@ def notify(title: str, text: str) -> None:
 
 def installed() -> dict:
     d = read_json(INSTALL_JSON)
-    d.setdefault("version", "0.0.0")
-    d.setdefault("commit", "")
-    d.setdefault("repo", DEFAULT_REPO)
-    d.setdefault("channel", "stable")
-    # По умолчанию — полностью автоматическое обновление ("сам обновляется с гитхаба"):
-    # ежедневная задача (launchd/systemd/Task Scheduler) вызывает `update.py auto`, который при
-    # auto_update=auto скачивает и ставит новую версию без вопросов, а не только уведомляет.
-    # Пользователь может понизить до "check" (только уведомление) или "off" через
-    # `jarvis update --auto check|off`; кнопка «Обновить» в трее/меню всегда доступна вручную.
-    d.setdefault("auto_update", "auto")
+    healed = False
+    # ВАЖНО: используем `d.get(key) or default`, а НЕ `d.setdefault(key, default)`.
+    # setdefault срабатывает только когда ключ полностью ОТСУТСТВУЕТ — а не когда он есть,
+    # но пустой ("" / None). На практике install.json может содержать "repo": "" (например,
+    # из-за старого бага install.ps1, при котором PowerShell роняла пустые строковые argv и
+    # сдвигала позиционные аргументы — см. комментарий в install.ps1); setdefault такой файл
+    # никогда бы не починил, и `jarvis update` продолжал бы падать с "репозиторий  недоступен
+    # или пуст" (двойной пробел = пустая repo) даже после установки версии с фиксом. Здесь —
+    # самолечение уже существующих повреждённых install.json, аналогично self-heal Scheduled
+    # Tasks в doctor.py (v2.1.3): чиним файл на диске при первом же обращении.
+    for key, default in (("version", "0.0.0"), ("commit", ""), ("repo", DEFAULT_REPO),
+                          ("channel", "stable"),
+                          # По умолчанию — полностью автоматическое обновление ("сам
+                          # обновляется с гитхаба"): ежедневная задача (launchd/systemd/Task
+                          # Scheduler) вызывает `update.py auto`, который при auto_update=auto
+                          # скачивает и ставит новую версию без вопросов, а не только
+                          # уведомляет. Пользователь может понизить до "check" (только
+                          # уведомление) или "off" через `jarvis update --auto check|off`;
+                          # кнопка «Обновить» в трее/меню всегда доступна вручную.
+                          ("auto_update", "auto")):
+        if not d.get(key):
+            d[key] = default
+            healed = True
+    if healed and INSTALL_JSON.exists():
+        try:
+            write_json(INSTALL_JSON, d)
+        except Exception:
+            pass  # чтение важнее записи — не мешаем работе, если диск недоступен только на запись
     return d
 
 
