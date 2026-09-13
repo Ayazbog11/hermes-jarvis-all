@@ -406,7 +406,17 @@ def apply(force: bool = False, tarball: str | None = None, version: str | None =
     cur = installed()
     info = read_json(UPDATE_JSON)
     if not tarball:
-        if not info or info.get("checked_at", "")[:10] != now_iso()[:10]:
+        # ВАЖНО: перепроверяем не только когда кэша нет или он от другого дня, но и когда
+        # предыдущая проверка сегодня же закончилась ОШИБКОЙ (info.get("error")). Раньше
+        # ошибочный результат кэшировался на весь день наравне с успешным — из-за этого
+        # исправление, устраняющее саму причину ошибки (например, самолечение пустого поля
+        # "repo" в install.json, см. 2.1.6), не давало эффекта до следующих суток: `jarvis
+        # update` продолжал показывать вчерашнюю ошибку "репозиторий недоступен или пуст",
+        # даже когда install.json на диске уже был исправлен и повторная проверка прошла бы
+        # успешно. Ошибку кэшируем только чтобы не спамить GitHub API при частых повторных
+        # вызовах (`jarvis doctor --fix` в цикле и т.п.) — но каждый НОВЫЙ вызов `jarvis
+        # update`/`doctor --fix` должен иметь шанс на самоисцеление.
+        if not info or info.get("error") or info.get("checked_at", "")[:10] != now_iso()[:10]:
             info = check()
         if info.get("error"):
             raise RuntimeError(f"проверка не удалась: {info['error']}")

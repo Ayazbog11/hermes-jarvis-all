@@ -470,6 +470,20 @@ def check_version(fix: bool) -> Check:
     except (OSError, ValueError):
         pass
     v = inst.get("version", "?")
+    if upd.get("error") and fix:
+        # Раньше здесь только читали update.json как есть — если вчерашняя (или сегодняшняя,
+        # см. update.py::apply()) проверка обновлений закончилась ошибкой (например, из-за
+        # уже исправленного к этому моменту бага вроде пустого install.json["repo"] в 2.1.5/
+        # 2.1.6), --fix продолжал показывать ту же самую устаревшую ошибку сколько угодно
+        # раз подряд, никогда не пытаясь проверить ещё раз. "--fix" обязан хотя бы попытаться
+        # самоисцелиться: перезапускаем `update.py check` и работаем с его свежим результатом.
+        code, _out = sh([sys.executable, str(JARVIS_HOME / "update.py"), "check", "--json"], timeout=30)
+        try:
+            upd = json.loads((JARVIS_HOME / "update.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        if code == 0 and not upd.get("error"):
+            c.fixed = True
     if upd.get("available"):
         return c.warn(f"{v} → доступно {upd.get('latest')}", "jarvis update")
     if upd.get("error"):

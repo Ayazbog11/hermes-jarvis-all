@@ -47,6 +47,41 @@ def test_version_check_reads_update_json(monkeypatch, tmp_path):
     assert c.status == "warn" and "1.9.0" in c.note and c.fix_hint == "jarvis update"
 
 
+def test_version_check_fix_reruns_update_check_after_stale_error(monkeypatch, tmp_path):
+    """Регресс: update.json может содержать ошибку из прошлой проверки, записанную ДО того,
+    как первопричина была устранена (например, install.json["repo"] был пуст, затем
+    самоисцелился — см. update.py::installed() в 2.1.6). check_version(fix=False) просто читает
+    файл как есть — это ожидаемо (--fix отсутствует). Но check_version(fix=True) обязан хотя бы
+    попытаться перепроверить через `update.py check`, а не бесконечно показывать одну и ту же
+    устаревшую ошибку. Реально наблюдалось у пользователя: install.json уже содержал верный
+    repo (jarvis status показывал его), но `jarvis doctor --fix` продолжал сообщать «репозиторий
+    недоступен или пуст» из вчерашнего update.json."""
+    d = load(monkeypatch, tmp_path)
+    (tmp_path / "jarvis").mkdir()
+    (tmp_path / "jarvis" / "install.json").write_text(
+        json.dumps({"version": "2.1.7", "repo": "Ayazbog11/hermes-jarvis-all", "channel": "stable"}),
+        encoding="utf-8")
+    (tmp_path / "jarvis" / "update.json").write_text(
+        json.dumps({"error": "репозиторий  недоступен или пуст", "checked_at": "2020-01-01T00:00:00"}),
+        encoding="utf-8")
+
+    def fake_sh(cmd, timeout=20, env=None):
+        # Симулируем `update.py check --json`, будто причина уже устранена: перезаписываем
+        # update.json свежим успешным результатом, как это сделал бы настоящий update.py.
+        (tmp_path / "jarvis" / "update.json").write_text(
+            json.dumps({"available": False, "current": "2.1.7", "error": ""}), encoding="utf-8")
+        return 0, ""
+
+    monkeypatch.setattr(d, "sh", fake_sh)
+
+    c_no_fix = d.check_version(False)
+    assert c_no_fix.status == "ok" and "не удалась" in c_no_fix.note, "без --fix ничего не перезапускаем"
+
+    c_fixed = d.check_version(True)
+    assert c_fixed.fixed
+    assert "не удалась" not in c_fixed.note
+
+
 def test_check_telegram_ok_when_telethon_importable(monkeypatch, tmp_path):
     d = load(monkeypatch, tmp_path)
     c = d.check_telegram(fix=False)

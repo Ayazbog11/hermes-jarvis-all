@@ -65,6 +65,33 @@ def test_check_uses_release_then_falls_back_to_main(tmp_path, monkeypatch):
     assert r2["error"] and "available" in r2
 
 
+def test_apply_retries_check_when_cached_result_is_a_same_day_error(tmp_path, monkeypatch):
+    """Регресс: apply() раньше повторно вызывал check() только если update.json отсутствовал
+    или был от другого дня — если сегодняшняя проверка уже закончилась ОШИБКОЙ (например,
+    install.json["repo"] был пуст из-за старого бага install.ps1, см. 2.1.6), эта же ошибка
+    кэшировалась и отдавалась заново при каждом следующем вызове `jarvis update` в течение
+    всего дня, даже после того как первопричина уже была устранена (repo самоисцелился).
+    apply() обязан перепроверить, если закэширован результат с ошибкой — независимо от даты."""
+    u = load(tmp_path, monkeypatch)
+    fake_install(tmp_path, "1.3.1")
+    (tmp_path / "jarvis" / "update.json").write_text(
+        json.dumps({"error": "репозиторий  недоступен или пуст", "checked_at": u.now_iso()}),
+        encoding="utf-8")
+
+    calls = []
+
+    def fake_check(do_notify=False):
+        calls.append(1)
+        result = {"checked_at": u.now_iso(), "current": "1.3.1", "available": False, "error": ""}
+        u.write_json(u.UPDATE_JSON, result)
+        return result
+
+    monkeypatch.setattr(u, "check", fake_check)
+    r = u.apply()
+    assert calls, "apply() должен был перезапустить check(), а не использовать вчерашнюю ошибку из сегодняшнего кэша"
+    assert r["updated"] is False and r["reason"] == "уже последняя версия"
+
+
 def test_backup_and_rollback(tmp_path, monkeypatch):
     u = load(tmp_path, monkeypatch)
     fake_install(tmp_path, "1.3.1")
