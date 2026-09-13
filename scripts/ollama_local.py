@@ -121,8 +121,12 @@ def pull(model: str) -> int:
 
 def hermes_config_set(key: str, value: str) -> bool:
     try:
+        # encoding="utf-8": hermes.exe принудительно переключает свой stdout на UTF-8 на Windows
+        # (hermes_cli/stdio.py::configure_windows_stdio()) независимо от кодовой страницы консоли —
+        # без явной кодировки здесь subprocess декодировал бы через cp1251 на русской локали
+        # (см. тот же фикс в model_switch.py/doctor.py::sh()).
         subprocess.run(["hermes", "config", "set", key, value], check=True,
-                        capture_output=True, text=True)
+                        capture_output=True, text=True, encoding="utf-8", errors="replace")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
         print(f"✖ hermes config set {key} {value} — {e}", file=sys.stderr)
@@ -132,7 +136,7 @@ def hermes_config_set(key: str, value: str) -> bool:
 def hermes_config_get(key: str) -> str:
     try:
         out = subprocess.run(["hermes", "config", "get", key], check=True,
-                              capture_output=True, text=True).stdout.strip()
+                              capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
         return out
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return ""

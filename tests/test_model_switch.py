@@ -78,3 +78,36 @@ def test_get_all_reports_missing_hermes(monkeypatch, tmp_path):
     result = m.get_all()
     assert result["success"] is False
     assert "hermes" in result["error"]
+
+
+def test_subprocess_calls_force_utf8_encoding(monkeypatch, tmp_path):
+    """Regression (v2.1.9-era bug): on Windows hermes.exe always forces its own stdout/stderr to
+    UTF-8 at startup (hermes_cli/stdio.py::configure_windows_stdio()), regardless of the console's
+    active code page. get_all()/set_value()/apply_profile() used to call subprocess.run(text=True)
+    without an explicit encoding, so Python decoded the UTF-8 bytes using
+    locale.getpreferredencoding() instead — cp1251 on a Russian-locale Windows box, producing
+    mojibake or UnicodeDecodeError for any Cyrillic model name/value/error message. Every
+    subprocess.run() call in this module must now pass encoding="utf-8" explicitly."""
+    m = load(monkeypatch, tmp_path)
+    fake = tmp_path / "hermes"
+    fake.write_text("", encoding="utf-8")
+    monkeypatch.setattr(m, "_hermes_bin", lambda: str(fake))
+
+    import subprocess as _subprocess
+
+    calls = []
+
+    def spy_run(*args, **kwargs):
+        calls.append(kwargs)
+        return _subprocess.CompletedProcess(args, 0, "тест", "")
+
+    monkeypatch.setattr(m.subprocess, "run", spy_run)
+
+    m.get_all()
+    m.set_value("chat_model", "upstage/solar-pro4:free")
+    m.save_profile("p1", {"model.default": "upstage/solar-pro4:free"})
+    m.apply_profile("p1")
+
+    assert calls, "subprocess.run было не вызвано — тест не проверил ничего"
+    for kwargs in calls:
+        assert kwargs.get("encoding") == "utf-8", f"вызов subprocess.run без encoding='utf-8': {kwargs}"

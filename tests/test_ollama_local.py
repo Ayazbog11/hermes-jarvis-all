@@ -99,6 +99,27 @@ def test_hermes_config_get_returns_empty_on_error(monkeypatch):
     assert m.hermes_config_get("model.default") == ""
 
 
+def test_hermes_config_set_and_get_force_utf8_encoding(monkeypatch):
+    """Regression: hermes.exe forces its own stdout to UTF-8 on Windows regardless of the
+    console's active code page (hermes_cli/stdio.py::configure_windows_stdio()). Without an
+    explicit encoding="utf-8" here, subprocess.run(text=True) would decode using
+    locale.getpreferredencoding() instead — cp1251 on Russian-locale Windows — producing mojibake
+    or UnicodeDecodeError for Cyrillic output."""
+    m = load(monkeypatch)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(args, 0, "тест", "")
+
+    monkeypatch.setattr(m.subprocess, "run", fake_run)
+    m.hermes_config_set("model.default", "qwen3:8b")
+    m.hermes_config_get("model.default")
+    assert calls, "subprocess.run было не вызвано"
+    for kwargs in calls:
+        assert kwargs.get("encoding") == "utf-8", f"вызов subprocess.run без encoding='utf-8': {kwargs}"
+
+
 def test_cmd_use_fails_when_ollama_not_running(monkeypatch, capsys):
     m = load(monkeypatch)
     monkeypatch.setattr(m, "is_running", lambda: False)

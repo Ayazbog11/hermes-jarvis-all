@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.1.10 — Та же кракозябра, но с другой стороны: `hermes config get/set` из HUD "Модель ИИ"/`jarvis ollama use`
+
+Родственный баг 2.1.9, найденный при продолжении того же аудита. `hermes.exe` на Windows сам
+принудительно переключает свой stdout/stderr на UTF-8 при старте, независимо от кодовой страницы
+консоли (`hermes_cli/stdio.py::configure_windows_stdio()` в самом Hermes CLI). Но
+`scripts/model_switch.py` (HUD-виджет «Модель ИИ», профили провайдеров) и
+`scripts/ollama_local.py::hermes_config_set/get` (`jarvis ollama use`) звали
+`subprocess.run([hermes, "config", ...], text=True)` **без явного `encoding="utf-8"`** — Python
+в этом случае декодирует UTF-8-байты из pipe через `locale.getpreferredencoding()`, что на
+русской Windows означает `cp1251`. Из-за рассинхрона могли получаться кракозябры или
+`UnicodeDecodeError` в сообщениях об ошибках `hermes config set/get` (та же природа, что уже
+чинилась в `scripts/doctor.py::sh()` для `.exe`-программ и в 2.1.9 для чтения лог-файлов).
+
+**Исправление**: все вызовы `subprocess.run(...)` в `model_switch.py` (`get_all`, `set_value`,
+`apply_profile`) и `ollama_local.py` (`hermes_config_set`, `hermes_config_get`) теперь явно
+передают `encoding="utf-8", errors="replace"`. `plugins/jarvis-core/triggers.py` и
+`scripts/ollama_local.py::ping_model()` уже делали это правильно — не трогались.
+
+Регресс-тесты: `test_subprocess_calls_force_utf8_encoding` (model_switch),
+`test_hermes_config_set_and_get_force_utf8_encoding` (ollama_local) — оба перехватывают
+`subprocess.run` и проверяют, что `encoding="utf-8"` передаётся в каждом вызове.
+
 ## 2.1.9 — Кракозябры вместо кириллицы в `jarvis logs`/`jarvis hud log`/`jarvis brain profile`
 
 При разборе очередного лога нашлась мойибейк-строка: одна и та же ошибка

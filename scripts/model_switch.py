@@ -158,7 +158,14 @@ def apply_profile(name: str, timeout: float = 20.0) -> dict:
     ok_all = True
     for key, value in profiles[name].items():
         try:
-            out = subprocess.run([hermes, "config", "set", key, value], capture_output=True, text=True, timeout=timeout)
+            # encoding="utf-8": hermes.exe сам принудительно переключает свой stdout/stderr на
+            # UTF-8 при старте на Windows (hermes_cli/stdio.py::configure_windows_stdio()) —
+            # независимо от кодовой страницы консоли. Без явной кодировки здесь subprocess
+            # декодировал бы UTF-8-байты через locale.getpreferredencoding() (на русской Windows —
+            # cp1251), что даёт кракозябры или UnicodeDecodeError в сообщениях об ошибках
+            # (те же симптомы, что уже чинили в doctor.py::sh() для консольных .exe).
+            out = subprocess.run([hermes, "config", "set", key, value], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=timeout)
             success = out.returncode == 0
             results[key] = {"success": success, "error": None if success else (out.stderr or out.stdout or "").strip()[:200]}
         except (subprocess.TimeoutExpired, OSError) as e:
@@ -242,7 +249,8 @@ def get_all(timeout: float = 10.0) -> dict:
     values: dict[str, str] = {}
     for label, (key, _hint) in ALLOWED_KEYS.items():
         try:
-            out = subprocess.run([hermes, "config", "get", key], capture_output=True, text=True, timeout=timeout)
+            out = subprocess.run([hermes, "config", "get", key], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=timeout)
             values[label] = _clean_config_value(out.stdout) if out.returncode == 0 else ""
         except (subprocess.TimeoutExpired, OSError):
             values[label] = ""
@@ -262,7 +270,8 @@ def set_value(label: str, value: str, timeout: float = 20.0) -> dict:
     if not hermes:
         return {"success": False, "error": "hermes не найден в PATH"}
     try:
-        out = subprocess.run([hermes, "config", "set", key, value], capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run([hermes, "config", "set", key, value], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         return {"success": False, "error": "hermes config set не ответил вовремя"}
     except OSError as e:
