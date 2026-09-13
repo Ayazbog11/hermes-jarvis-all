@@ -240,7 +240,10 @@ switch ($Command) {
             { $_ -in @("start", "open") } { Hud-Start; Start-Process "http://127.0.0.1:$HudPort" -ErrorAction SilentlyContinue; break }
             "status" { if (Hud-Running) { Say "HUD работает → http://127.0.0.1:$HudPort" } else { Say "HUD не запущен"; exit 1 }; break }
             "stop" { Hud-Stop; break }
-            { $_ -in @("log", "logs") } { Get-Content $HudLog -Tail 60 -Wait; break }
+            # -Encoding UTF8: jarvis-hud.log пишется Python'ом в UTF-8 без BOM — без явной кодировки
+            # PowerShell 5.1 читает такой файл в ANSI консоли (на русской Windows это cp1251),
+            # и кириллица превращается в кракозябры («Р°РіРµРЅС‚ Р'РµСЂРЅСѓР»...»).
+            { $_ -in @("log", "logs") } { Get-Content $HudLog -Tail 60 -Wait -Encoding UTF8; break }
             "restart" {
                 if (Hud-TaskExists) { Quiet { schtasks /End /TN "JARVIS-HUD" 2>$null | Out-Null; schtasks /Run /TN "JARVIS-HUD" 2>$null | Out-Null }; Say "HUD перезапущен (задача Планировщика)" }
                 else { Hud-Stop; Hud-Start }
@@ -326,7 +329,7 @@ switch ($Command) {
             }
             "profile" {
                 $profilePath = Join-Path $JarvisHome "PROFILE.md"
-                if (Test-Path $profilePath) { Get-Content $profilePath } else { Write-Host "Профиль ещё не выгружен — jarvis brain export" }
+                if (Test-Path $profilePath) { Get-Content $profilePath -Encoding UTF8 } else { Write-Host "Профиль ещё не выгружен — jarvis brain export" }
                 break
             }
             "restore" {
@@ -518,8 +521,9 @@ switch ($Command) {
     }
     "logs" {
         $agentLog = Join-Path $HermesHome "logs\agent.log"
-        if (Test-Path $agentLog) { Get-Content $agentLog -Tail 40 }
-        if (Test-Path $HudLog) { Get-Content $HudLog -Tail 40 }
+        # -Encoding UTF8 по той же причине, что и выше: оба лога — UTF-8 без BOM.
+        if (Test-Path $agentLog) { Get-Content $agentLog -Tail 40 -Encoding UTF8 }
+        if (Test-Path $HudLog) { Get-Content $HudLog -Tail 40 -Encoding UTF8 }
         try { & hermes logs --follow } catch { Write-Verbose "hermes logs --follow недоступен: $($_.Exception.Message)" }
         break
     }
