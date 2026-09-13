@@ -174,6 +174,16 @@ def check_model(fix: bool, do_ping: bool) -> Check:
     # "attention required"/"cloudflare" ловит характерный блок Cloudflare (напр. у
     # inference-api.nousresearch.com при перегрузке/бане IP) — без этих слов такой ответ уже
     # покрывается "403"/"http 4", но явное совпадение даёт понятнее текст диагноза пользователю.
+    # WinError 10061 / ConnectionRefused / "Connection error." — типичный признак того, что
+    # model.provider=custom указывает на локальный OpenAI-совместимый сервер (LM Studio,
+    # Ollama, свой прокси и т.п. на localhost:<порт>), который сейчас не запущен. Отличаем
+    # этот случай от реальной проблемы с облачным провайдером (ключ/баланс/Cloudflare) —
+    # подсказка тут другая: либо запустить локальный сервер, либо переключиться на облако.
+    if any(k in low for k in ("connection error", "connectionrefused", "connection refused",
+                                "10061", "winerror", "actively refused", "econnrefused")):
+        return c.fail(f"{model} — локальный сервер не отвечает: {text[-160:] or 'нет ответа'}",
+                      "проверьте, что локальный LLM-сервер (Ollama/LM Studio/свой) запущен на "
+                      "указанном base_url; либо переключитесь на облако: hermes model")
     if code != 0 or not text or any(k in low for k in ("error code", "http 4", "http 5", "traceback",
                                                          "401", "403", "405", "429",
                                                          "attention required", "cloudflare", "permissiondeniederror")):
@@ -298,20 +308,28 @@ def check_launchd(fix: bool) -> Check:
         missing = [t for t in ALL_TASKS if t not in tasks]
         if missing:
             if fix:
-                sh([sys.executable, str(JARVIS_HOME / "setup_scheduled_tasks.py"), "install",
-                    "--home", str(HERMES_HOME), "--python", sys.executable], timeout=30)
+                fix_code, fix_out = sh(
+                    [sys.executable, str(JARVIS_HOME / "setup_scheduled_tasks.py"), "install",
+                     "--home", str(HERMES_HOME), "--python", sys.executable], timeout=30)
                 code, out = sh(["schtasks", "/Query", "/FO", "LIST"], timeout=15)
                 tasks = [t for t in ALL_TASKS if t in out]
                 missing = [t for t in ALL_TASKS if t not in tasks]
                 if not missing:
                     c.fixed = True
                     return c.ok(f"{len(tasks)} из {len(ALL_TASKS)} задач(и) созданы (исправлено)")
+                # setup_scheduled_tasks.py печатает по одной строке "✔/✖ <имя задачи>[: причина]"
+                # на каждую задачу — вытаскиваем строки именно про недостающие задачи, чтобы
+                # показать НАСТОЯЩУЮ причину отказа schtasks (а не только общий совет
+                # переустановить), не заставляя пользователя копаться в отдельном логе.
+                reasons = [ln.strip() for ln in fix_out.splitlines()
+                           if ln.strip().startswith("✖") and any(t in ln for t in missing)]
+                detail = ("; ".join(reasons) if reasons else
+                          (fix_out.strip()[-300:] if fix_out.strip() else "install-скрипт не вывел причину"))
                 if tasks:
                     return c.warn(
                         f"зарегистрировано только {len(tasks)} из {len(ALL_TASKS)} "
-                        f"(не хватает: {', '.join(missing)}) — попытка автопочинки не устранила все задачи",
-                        "schtasks /Query /TN " + missing[0] + " /V /FO LIST   (причина отказа — "
-                        "часто устаревший XML или недостаточные права; переустановите install.ps1 -Yes)")
+                        f"(не хватает: {', '.join(missing)}) — причина отказа: {detail}",
+                        "schtasks /Query /TN " + missing[0] + " /V /FO LIST   (или переустановите: install.ps1 -Yes)")
             return c.warn("задачи не установлены — JARVIS не поднимется сам после входа в систему",
                           "install.ps1 -Yes  (шаг Scheduled Task)  или запускайте jarvis up вручную")
         return c.ok(f"{len(tasks)} из {len(ALL_TASKS)} задач(и) в планировщике")
