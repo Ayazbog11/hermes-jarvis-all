@@ -52,7 +52,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install pytest pyyaml telethon && python -m pytest tests -q
         if: steps.t.outputs.exists != 'true'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: steps.t.outputs.exists != 'true'
         with: { name: JARVIS.app, path: app/prebuilt }
       - name: Release notes from CHANGELOG
