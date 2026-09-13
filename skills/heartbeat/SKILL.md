@@ -2,12 +2,11 @@
 name: jarvis-heartbeat
 description: Периодическая проверка «нужно ли что-то сказать?» по чек-листу HEARTBEAT.md; молчит (NO_REPLY), если всё спокойно
 version: 1.0.0
-platforms: [macos]
 metadata:
   hermes:
     tags: [jarvis, proactive, heartbeat]
     category: productivity
-    requires_toolsets: [jarvis-core, jarvis-macos, jarvis-brain]
+    requires_toolsets: [jarvis_core, jarvis_brain]
 ---
 
 # Heartbeat — тихая проактивность
@@ -23,8 +22,11 @@ metadata:
 
 ## Procedure
 1. Прочитай `~/.hermes/jarvis/HEARTBEAT.md` (`read_file`). Если файла нет или он пуст — ответь `NO_REPLY`.
-2. Для каждого пункта чек-листа собери факт одним инструментом (`mac_battery`, `mac_calendar today`,
-   `mac_reminders list`, `mac_system_info disk`, `brain_recall` и т. п.). Не больше 6 вызовов за прогон.
+2. Для каждого пункта чек-листа собери факт одним инструментом — имя зависит от ОС (см. control-навык
+   платформы: `mac-control`/`win-control`/`linux-control`): батарея (`mac_battery`/`win_battery`/`linux_battery`),
+   календарь на сегодня (`jarvis_calendar today`, единый на всех ОС), напоминания (`mac_reminders`/`win_reminders`/
+   `linux_reminders`), диск (`mac_system_info`/`win_system_info`/`linux_system_info` с `disk`), `brain_recall` и т. п.
+   Не больше 6 вызовов за прогон.
 3. **Дедупликация.** Перед тем как что-то сообщить — `brain_recall(query="heartbeat <тема>", scope="episodes")`
    и `brain_review(action="episodes", limit=3)`. Если об этом уже предупреждали сегодня — молчи.
 4. Если ни один пункт не сработал — ответ ровно `NO_REPLY` (без точки, без пояснений).

@@ -2,7 +2,6 @@
 name: jarvis-briefing
 description: Брифинг JARVIS для cron — утро/вечер, доставка в чат
 version: 1.0.0
-platforms: [macos]
 metadata:
   hermes:
     tags: [jarvis, cron, briefing]

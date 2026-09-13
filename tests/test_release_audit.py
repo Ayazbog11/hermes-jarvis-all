@@ -233,3 +233,55 @@ def test_release_workflow_skip_check_uses_gh_release_not_git_tag():
     y = yaml.safe_load(text)
     run_step = next(s for s in y["jobs"]["release"]["steps"] if s.get("id") == "t")
     assert "git rev-parse" not in run_step["run"], "нельзя определять «уже опубликован» по наличию git-тега — тег пушится раньше релиза"
+
+
+def test_cross_platform_skills_not_locked_to_macos():
+    """Регресс: несколько навыков, которые ПОДКЛЮЧЕНЫ во всех трёх skill-bundles
+    (jarvis.windows.yaml / jarvis.linux.yaml / jarvis.macos.yaml — morning-briefing,
+    jarvis-briefing, jarvis-heartbeat, jarvis-brain-import), содержали
+    `platforms: [macos]` во frontmatter SKILL.md. Hermes CLI (tools/skills_tool.py,
+    skill_matches_platform) жёстко отвергает такой навык на любой ОС кроме macOS
+    (sys.platform != darwin -> "Skill '...' is not supported on this platform.") — реально
+    воспроизвелось в логах пользователя на Windows: `Cron job 'JARVIS: утренний брифинг':
+    skill not found, skipping — Skill 'jarvis/briefing' is not supported on this platform.`
+    То же для `heartbeat`. Кросс-платформенные навыки не должны сужать `platforms`."""
+    universal_skill_dirs = [
+        ROOT / "skills" / "briefing",
+        ROOT / "skills" / "heartbeat",
+        ROOT / "skills" / "brain-import",
+        ROOT / "plugins" / "jarvis-core" / "skills" / "morning-briefing",
+    ]
+    for d in universal_skill_dirs:
+        text = (d / "SKILL.md").read_text(encoding="utf-8")
+        assert "platforms:" not in text.split("---", 2)[1], \
+            f"{d.relative_to(ROOT)}/SKILL.md подключён во всех ОС-бандлах — не должен ограничивать platforms"
+
+
+def test_setup_cron_uses_qualified_name_for_plugin_provided_skill():
+    """Регресс: brain-nightly-review — навык ПЛАГИНА jarvis-brain, зарегистрированный через
+    PluginContext.register_skill(), который резолвится ТОЛЬКО как 'jarvis-brain:brain-nightly-
+    review' (не входит в плоское дерево ~/.hermes/skills/, см. hermes_cli/plugins.py:
+    register_skill docstring). setup_cron.ps1/.sh раньше передавали cron'у голое имя
+    'brain-nightly-review' без namespace — воспроизведённая ошибка в логе пользователя:
+    `Cron job 'JARVIS: ночная ревизия базы знаний': skill not found, skipping — Skill
+    'brain-nightly-review' not found.`"""
+    for fname in ("setup_cron.ps1", "setup_cron.sh"):
+        text = (ROOT / "scripts" / fname).read_text(encoding="utf-8")
+        assert '"jarvis-brain:brain-nightly-review"' in text, \
+            f"{fname}: brain-nightly-review должен передаваться cron'у с namespace-префиксом плагина"
+        # Аргумент --skill — это отдельная строка/токен, заканчивающийся строго на
+        # `"brain-nightly-review"` (без namespace-префикса перед ним); упоминания в
+        # комментариях/тексте промпта (напр. «по навыку brain-nightly-review:») не оканчивают
+        # строку кавычкой сразу после имени, так что не задевают эту проверку.
+        skill_arg_lines = [line for line in text.splitlines() if line.rstrip().endswith('"brain-nightly-review"')]
+        assert not skill_arg_lines, f"{fname}: остался вызов без namespace-префикса: {skill_arg_lines}"
+
+
+def test_setup_cron_does_not_reference_removed_win_calendar():
+    """Регресс: win_calendar/win_contacts (Outlook COM) были полностью удалены из
+    jarvis-windows (см. комментарий в tools.py про мастер первого запуска Outlook,
+    всплывающий каждые несколько минут) в пользу кроссплатформенного jarvis_calendar, но
+    setup_cron.ps1 продолжал ссылаться на несуществующий инструмент 'win_calendar' в тексте
+    cron-промпта вечернего брифинга."""
+    text = (ROOT / "scripts" / "setup_cron.ps1").read_text(encoding="utf-8")
+    assert "win_calendar" not in text, "win_calendar удалён из jarvis-windows — используйте jarvis_calendar"

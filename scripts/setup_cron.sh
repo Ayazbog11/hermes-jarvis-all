@@ -12,9 +12,16 @@ mk(){ # mk "name" "schedule" "prompt" [skill]
 mk "JARVIS: утренний брифинг" "every day at 08:00" \
    "Сделай утренний брифинг по навыку morning-briefing. Коротко." "jarvis/briefing"
 mk "JARVIS: вечерний итог" "every day at 21:00" \
-   "Сделай вечерний итог дня: что сделано (session_search за сегодня), что перенести на завтра, события календаря на завтра (mac_calendar tomorrow). Коротко." "jarvis/briefing"
+   "Сделай вечерний итог дня: что сделано (session_search за сегодня), что перенести на завтра, события календаря на завтра (jarvis_calendar tomorrow). Коротко." "jarvis/briefing"
+# brain-nightly-review — навык ПЛАГИНА jarvis-brain (register_skill), а не файл в общем дереве
+# ~/.hermes/skills/ — резолвится ТОЛЬКО через квалифицированное имя "<plugin>:<skill>"
+# (см. hermes_cli.plugins.PluginContext.register_skill: "становится доступным как
+# '<plugin_name>:<name>' через skill_view()... не входит в плоское дерево ~/.hermes/skills/").
+# Раньше здесь был голый "brain-nightly-review" — cron падал с "Skill 'brain-nightly-review'
+# not found", потому что плоский скан ~/.hermes/skills/ не видит навыки, зарегистрированные
+# плагинами напрямую.
 mk "JARVIS: ночная ревизия базы знаний" "every day at 03:30" \
-   "Проведи ночную ревизию базы знаний по навыку brain-nightly-review: brain_review maintain → digest_queue/save_episode → plan → apply → export → finish. Если изменений нет — ответь ровно: [SILENT]" "brain-nightly-review"
+   "Проведи ночную ревизию базы знаний по навыку brain-nightly-review: brain_review maintain → digest_queue/save_episode → plan → apply → export → finish. Если изменений нет — ответь ровно: [SILENT]" "jarvis-brain:brain-nightly-review"
 mk "JARVIS: синхронизация памяти" "every sunday at 20:00" \
    "1) brain_review profile — получи самое важное из базы знаний. 2) Сравни со встроенной памятью (memory: USER.md/MEMORY.md): факты из памяти, которых нет в базе — перенеси через brain_remember; устаревшее в памяти удали; убедись, что в USER.md есть 10–15 самых важных пунктов профиля (importance ≥4) — не больше. Отчитайся в двух предложениях."
 # С 1.8 основную проактивность делают локальные триггеры jarvis-core (события, без LLM); cron-heartbeat остаётся редкой страховкой

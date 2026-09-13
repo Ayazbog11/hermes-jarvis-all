@@ -1,5 +1,52 @@
 # Changelog
 
+## 2.1.7 — Cron-задачи молча пропускались на Windows: платформенная блокировка навыков и отсутствие namespace у навыка плагина
+
+В том же логе, что показал баг `jarvis update` (2.1.6), нашлись ещё две отдельные причины,
+почему запланированные (`hermes cron`) задачи JARVIS — утренний/вечерний брифинг, heartbeat,
+ночная ревизия базы знаний — молча не выполнялись на Windows:
+
+```
+Cron job 'JARVIS: утренний брифинг': skill not found, skipping — Skill 'jarvis/briefing' is not supported on this platform.
+Cron job 'JARVIS: heartbeat': skill not found, skipping — Skill 'jarvis/heartbeat' is not supported on this platform.
+Cron job 'JARVIS: вечерний итог': skill not found, skipping — Skill 'jarvis/briefing' is not supported on this platform.
+Cron job 'JARVIS: ночная ревизия базы знаний': skill not found, skipping — Skill 'brain-nightly-review' not found.
+```
+
+**Причина №1 — навыки, помеченные `platforms: [macos]`, но подключённые во всех трёх ОС.**
+Hermes CLI жёстко проверяет фронтматтер `platforms:` каждого `SKILL.md`
+(`tools/skills_tool.py::skill_matches_platform`) и отказывает в загрузке навыка на любой ОС,
+не входящей в список — даже если сам навык физически скопирован и подключён в
+`skill-bundles/jarvis.windows.yaml`/`jarvis.linux.yaml`. Четыре навыка (`morning-briefing`,
+`jarvis-briefing`, `jarvis-heartbeat`, `jarvis-brain-import`) были помечены `platforms:
+[macos]`, унаследованным из исходного macOS-проекта, хотя они используются во всех ОС-бандлах
+(календарь и брифинг — уже кроссплатформенные через `jarvis_calendar`). Убрано ограничение
+`platforms` с этих навыков; их содержимое обновлено так, чтобы не жёстко зашивать
+macOS-специфичные имена инструментов (`mac_reminders`/`mac_battery` → «инструмент зависит от
+ОС, см. control-навык платформы»), а импорт контактов (`jarvis-brain-import`, доступен только
+на macOS — на Windows/Linux нет системной адресной книги) теперь честно предупреждает об
+ограничении вместо падения. Настоящие ОС-специфичные навыки (`mac-control`/`win-control`/
+`linux-control`) оставлены как есть — это осознанное разделение, не баг.
+
+**Причина №2 — `brain-nightly-review` резолвится только с namespace-префиксом плагина.**
+Это навык, зарегистрированный самим плагином `jarvis-brain` через `ctx.register_skill()` (а не
+файл в общем дереве `~/.hermes/skills/`) — по документации Hermes такой навык становится
+доступен исключительно как `"<plugin_name>:<name>"`, то есть `jarvis-brain:brain-nightly-
+review`, и не входит в плоский скан `~/.hermes/skills/`, где cron ищет голые имена. И
+`scripts/setup_cron.ps1`, и `scripts/setup_cron.sh` передавали cron'у голое имя
+`brain-nightly-review` без префикса — задача создавалась, но каждый запуск падал с «skill not
+found». Оба скрипта исправлены на `jarvis-brain:brain-nightly-review`.
+
+**Заодно**: `setup_cron.ps1` в тексте вечернего брифинга ссылался на несуществующий инструмент
+`win_calendar tomorrow` — `win_calendar`/`win_contacts` (Outlook COM) были полностью удалены из
+`jarvis-windows` ещё раньше (вызывали всплывающий мастер первого запуска Outlook) в пользу
+кроссплатформенного `jarvis_calendar`, но эта строка не была обновлена. Исправлено на
+`jarvis_calendar tomorrow`.
+
+Добавлены регресс-тесты: `test_cross_platform_skills_not_locked_to_macos`,
+`test_setup_cron_uses_qualified_name_for_plugin_provided_skill`,
+`test_setup_cron_does_not_reference_removed_win_calendar`.
+
 ## 2.1.6 — Настоящая причина, почему `jarvis update` не работал: PowerShell роняет пустые строковые аргументы
 
 После 2.1.5 (Scheduled Tasks починены, автозапуск 4/4 подтверждён пользователем на живой
