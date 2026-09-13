@@ -83,7 +83,18 @@ _TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 </Task>
 """
 
-_TRIGGER_LOGON = "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
+# ВАЖНО: <LogonTrigger> без <UserId> Task Scheduler трактует как "вход ЛЮБОГО пользователя"
+# (см. официальный LogonTrigger.UserId — "If you want a task to be triggered when any member
+# of a group logs on... do not assign a value to UserId"). Регистрация такого триггера
+# непривилегированным (неповышенным) процессом требует прав, которых у обычного пользователя
+# нет, и schtasks.exe отвергает всю задачу с генерической "ОШИБКА: Отказано в доступе" —
+# то же самое сообщение, что при реальной нехватке прав, из-за чего эта причина маскировалась
+# под RestartOnFailure/Count=999 (см. соседний фикс) при поверхностном чтении лога. Задача с
+# явным <UserId>ДОМЕН\пользователь</UserId> регистрируется без проблем и без повышения прав —
+# подтверждено идентичным паттерном отказа в независимом проекте (opencodex issue #4425:
+# LogonTrigger без UserId → Access is denied; тот же XML + UserId → SUCCESS).
+def _trigger_logon(user: str) -> str:
+    return f"<LogonTrigger><Enabled>true</Enabled><UserId>{user}</UserId></LogonTrigger>"
 _TRIGGER_DAILY = ("<CalendarTrigger><StartBoundary>{date}T{time}:00</StartBoundary>"
                    "<Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger>")
 _RESTART_ON_FAILURE = "<RestartOnFailure><Interval>PT1M</Interval><Count>255</Count></RestartOnFailure>"
@@ -135,14 +146,14 @@ def install(home: str, python_exe: str, no_app: bool, no_cron: bool) -> int:
 
     ok, msg = _register(
         "JARVIS-HUD", "JARVIS HUD (веб-панель) — автозапуск при входе",
-        python_exe, f'"{jarvis_home}\\hud\\server.py" --port 8765', home, user, _TRIGGER_LOGON, restart=True,
+        python_exe, f'"{jarvis_home}\\hud\\server.py" --port 8765', home, user, _trigger_logon(user), restart=True,
     )
     print(f"  {'✔' if ok else '✖'} JARVIS-HUD" + ("" if ok else f": {msg}"))
     ok_all &= ok
 
     ok, msg = _register(
         "JARVIS-Gateway", "JARVIS gateway (Telegram/Discord/API) — автозапуск при входе",
-        hermes_bin, "gateway run", home, user, _TRIGGER_LOGON, restart=True,
+        hermes_bin, "gateway run", home, user, _trigger_logon(user), restart=True,
     )
     print(f"  {'✔' if ok else '✖'} JARVIS-Gateway" + ("" if ok else f": {msg}"))
     ok_all &= ok
@@ -162,7 +173,7 @@ def install(home: str, python_exe: str, no_app: bool, no_cron: bool) -> int:
             pyw = python_exe
         ok, msg = _register(
             "JARVIS-App", "JARVIS — значок в системном трее",
-            pyw, f'"{jarvis_home}\\tray\\jarvis_tray.pyw"', home, user, _TRIGGER_LOGON, restart=True,
+            pyw, f'"{jarvis_home}\\tray\\jarvis_tray.pyw"', home, user, _trigger_logon(user), restart=True,
         )
         print(f"  {'✔' if ok else '✖'} JARVIS-App" + ("" if ok else f": {msg}"))
         ok_all &= ok

@@ -26,7 +26,7 @@ NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 def _render(restart: bool = True) -> str:
     return sst._TASK_XML.format(
         description="test task",
-        triggers=sst._TRIGGER_LOGON,
+        triggers=sst._trigger_logon(r"DOMAIN\user"),
         user=r"DOMAIN\user",
         restart=sst._RESTART_ON_FAILURE if restart else "",
         command=r"C:\python.exe",
@@ -107,3 +107,30 @@ def test_restart_on_failure_interval_present_and_valid_duration():
     root = ET.fromstring(_render(restart=True).encode("utf-16"))
     interval_el = root.find("t:Settings/t:RestartOnFailure/t:Interval", NS)
     assert interval_el is not None and interval_el.text == "PT1M"
+
+
+def test_logon_trigger_has_explicit_user_id():
+    """Regression guard for a real-world install: <LogonTrigger> WITHOUT <UserId> is
+    interpreted by Task Scheduler as "fire on ANY user's logon" (see the official
+    LogonTrigger.UserId docs: "If you want a task to be triggered when any member of a
+    group logs on... do not assign a value to UserId"). Registering an unscoped logon
+    trigger from a non-elevated process requires privileges a normal user doesn't have,
+    and schtasks.exe rejects the whole task with the exact same generic "ОШИБКА: Отказано
+    в доступе" ("Access is denied") message as a real permission problem — which is what
+    masked this bug behind the (separately fixed) RestartOnFailure/Count=999 issue.
+    A user hit this in production: JARVIS-HUD/Gateway/App (all use a LogonTrigger) failed
+    to register while JARVIS-Updater (CalendarTrigger, no LogonTrigger at all) succeeded —
+    the common factor was the missing <UserId>, not RestartOnFailure.
+    """
+    trigger_xml = sst._trigger_logon(r"DOMAIN\user")
+    xml = sst._TASK_XML.format(
+        description="test task", triggers=trigger_xml, user=r"DOMAIN\user",
+        restart=sst._RESTART_ON_FAILURE, command=r"C:\python.exe",
+        arguments='"C:\\jarvis\\hud\\server.py" --port 8765', workdir=r"C:\hermes",
+    )
+    root = ET.fromstring(xml.encode("utf-16"))
+    logon = root.find("t:Triggers/t:LogonTrigger", NS)
+    assert logon is not None
+    user_id = logon.find("t:UserId", NS)
+    assert user_id is not None and user_id.text, "LogonTrigger must carry an explicit UserId"
+    assert user_id.text == r"DOMAIN\user"
